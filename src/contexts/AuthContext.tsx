@@ -77,7 +77,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .from('firms')
           .select('id')
           .eq('owner_user_id', userId)
-          .eq('is_active', true)
           .maybeSingle()
         resolvedFirmId = ownedFirmResult.data?.id ?? null
       }

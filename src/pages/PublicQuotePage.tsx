@@ -226,7 +226,8 @@ export default function PublicQuotePage() {
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('create-public-lead', {
+      // Hard client-side timeout — never let the submit button hang.
+      const invokePromise = supabase.functions.invoke('create-public-lead', {
         body: {
           lead: leadPayload,
           discountCodeId: validatedDiscount?.id || null,
@@ -244,6 +245,10 @@ export default function PublicQuotePage() {
           })),
         },
       })
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out')), 45000),
+      )
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise])
 
       if (error) throw error
 
@@ -251,7 +256,10 @@ export default function PublicQuotePage() {
       setLeadRef(data?.instructionRef || data?.id || null)
       setSubmitted(true)
     } catch (err) {
-      // Fallback: insert lead directly if edge function unavailable
+      // Fallback: insert lead directly if edge function unavailable. The
+      // customer won't get an automatic email in this path (the edge function
+      // is what triggers it) but at least the lead is captured.
+      console.error('create-public-lead invoke failed, falling back to direct insert:', err)
       const { data: lead, error: insertError } = await supabase
         .from('leads')
         .insert(leadPayload)
@@ -296,7 +304,7 @@ export default function PublicQuotePage() {
   // Submitted state
   if (submitted && quoteResult) {
     return (
-      <div className={`min-h-screen bg-muted/30 ${isEmbed ? 'p-4' : 'py-8 px-4'}`}>
+      <div className={`bg-muted/30 ${isEmbed ? 'p-4' : 'min-h-screen py-8 px-4'}`}>
         <div className="max-w-2xl mx-auto">
           {!isEmbed && (
             <div className="text-center mb-8">
@@ -365,7 +373,7 @@ export default function PublicQuotePage() {
   }
 
   return (
-    <div className={`min-h-screen bg-muted/30 ${isEmbed ? 'p-4' : 'py-8 px-4'}`}>
+    <div className={`bg-muted/30 ${isEmbed ? 'p-4' : 'min-h-screen py-8 px-4'}`}>
       <div className="max-w-2xl mx-auto">
         {!isEmbed && (
           <div className="text-center mb-8">

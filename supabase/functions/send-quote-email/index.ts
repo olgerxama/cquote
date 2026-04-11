@@ -2,6 +2,7 @@
 // Admin-triggered: sends a quote/invoice email to the lead with an optional
 // PDF attachment, then marks the quote as sent.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +22,16 @@ interface EmailOptions {
   subject: string
   html: string
   attachments?: EmailAttachment[]
+}
+
+// Hard timeout so a hanging provider can never stall the edge function.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms),
+    ),
+  ])
 }
 
 async function sendViaSendGrid(opts: EmailOptions): Promise<boolean> {
@@ -77,72 +88,71 @@ async function sendViaSmtp(opts: EmailOptions): Promise<boolean> {
   const pass = Deno.env.get('SMTP_PASS')
   if (!host || !user || !pass) return false
   const port = parseInt(Deno.env.get('SMTP_PORT') || '587')
-  const secure = Deno.env.get('SMTP_SECURE') === 'true'
-  try {
-    const conn = secure
-      ? await Deno.connectTls({ hostname: host, port })
-      : await Deno.connect({ hostname: host, port })
-    const enc = new TextEncoder()
-    const dec = new TextDecoder()
-    const read = async () => {
-      const buf = new Uint8Array(4096)
-      const n = await conn.read(buf)
-      return n ? dec.decode(buf.subarray(0, n)) : ''
-    }
-    const cmd = async (c: string) => {
-      await conn.write(enc.encode(c + '\r\n'))
-      return read()
-    }
-    await read()
-    await cmd('EHLO conveyquote')
-    await cmd('AUTH LOGIN')
-    await cmd(btoa(user))
-    const authRes = await cmd(btoa(pass))
-    if (!authRes.startsWith('235')) {
-      conn.close()
-      return false
-    }
-    await cmd(`MAIL FROM:<${opts.from}>`)
-    await cmd(`RCPT TO:<${opts.to}>`)
-    await cmd('DATA')
+  // Port 465 uses implicit TLS; 587/25 start plain and upgrade via STARTTLS.
+  const implicitTls = Deno.env.get('SMTP_SECURE') === 'true' || port === 465
 
-    const boundary = `boundary_${Date.now()}`
-    let msg = `From: ${opts.fromName || 'ConveyQuote'} <${opts.from}>\r\n`
-    msg += `To: ${opts.to}\r\n`
-    msg += `Subject: ${opts.subject}\r\n`
-    msg += `MIME-Version: 1.0\r\n`
-    if (opts.attachments?.length) {
-      msg += `Content-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n`
-      msg += `--${boundary}\r\n`
-      msg += `Content-Type: text/html; charset=utf-8\r\n\r\n`
-      msg += `${opts.html}\r\n`
-      for (const att of opts.attachments) {
-        msg += `--${boundary}\r\n`
-        msg += `Content-Type: application/pdf; name="${att.filename}"\r\n`
-        msg += `Content-Transfer-Encoding: base64\r\n`
-        msg += `Content-Disposition: attachment; filename="${att.filename}"\r\n\r\n`
-        msg += `${att.content}\r\n`
-      }
-      msg += `--${boundary}--\r\n`
-    } else {
-      msg += `Content-Type: text/html; charset=utf-8\r\n\r\n`
-      msg += opts.html
+  let client: SMTPClient | null = null
+  try {
+    client = new SMTPClient({
+      connection: {
+        hostname: host,
+        port,
+        tls: implicitTls,
+        auth: { username: user, password: pass },
+      },
+    })
+
+    const message: Record<string, unknown> = {
+      from: opts.fromName ? `${opts.fromName} <${opts.from}>` : opts.from,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
     }
-    msg += '\r\n.'
-    const dataRes = await cmd(msg)
-    await cmd('QUIT')
-    conn.close()
-    return dataRes.startsWith('250')
+    if (opts.attachments?.length) {
+      message.attachments = opts.attachments.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        encoding: 'base64',
+        contentType: 'application/pdf',
+      }))
+    }
+    // deno-lint-ignore no-explicit-any
+    await client.send(message as any)
+    await client.close()
+    return true
   } catch (err) {
     console.error('SMTP error:', err)
+    if (client) {
+      try { await client.close() } catch (_) { /* ignore */ }
+    }
     return false
   }
 }
 
 async function sendEmail(opts: EmailOptions): Promise<{ ok: boolean; provider: string }> {
-  if (await sendViaSmtp(opts)) return { ok: true, provider: 'smtp' }
-  if (await sendViaSendGrid(opts)) return { ok: true, provider: 'sendgrid' }
-  if (await sendViaResend(opts)) return { ok: true, provider: 'resend' }
+  // Each provider is bounded by a hard timeout so one misbehaving path
+  // (e.g. blocked SMTP port) can never hang the whole request.
+  try {
+    if (await withTimeout(sendViaSmtp(opts), 15000, 'SMTP')) {
+      return { ok: true, provider: 'smtp' }
+    }
+  } catch (e) {
+    console.warn('SMTP failed:', e)
+  }
+  try {
+    if (await withTimeout(sendViaSendGrid(opts), 15000, 'SendGrid')) {
+      return { ok: true, provider: 'sendgrid' }
+    }
+  } catch (e) {
+    console.warn('SendGrid failed:', e)
+  }
+  try {
+    if (await withTimeout(sendViaResend(opts), 15000, 'Resend')) {
+      return { ok: true, provider: 'resend' }
+    }
+  } catch (e) {
+    console.warn('Resend failed:', e)
+  }
   return { ok: false, provider: 'none' }
 }
 

@@ -630,7 +630,9 @@ function QuoteSection({
         quoteId = await saveMut.mutateAsync()
       }
       const totals = recalculateTotals(items)
-      const { data, error } = await supabase.functions.invoke('send-quote-email', {
+      // Hard client-side timeout so the button can never appear "stuck" — even
+      // if the edge function or network misbehaves the user gets a clear error.
+      const invokePromise = supabase.functions.invoke('send-quote-email', {
         body: {
           quoteId,
           leadId: lead.id,
@@ -642,6 +644,10 @@ function QuoteSection({
           },
         },
       })
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Email request timed out after 45s. Please try again.')), 45000),
+      )
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise])
       if (error) throw error
       if (data && data.ok === false) {
         throw new Error(data?.error?.message || 'Send failed')

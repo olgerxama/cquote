@@ -2,6 +2,7 @@
 // Records instruction details on the lead (into answers jsonb) and notifies
 // the firm by email.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,6 +15,15 @@ interface EmailOptions {
   fromName?: string
   subject: string
   html: string
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms),
+    ),
+  ])
 }
 
 async function sendViaSendGrid(opts: EmailOptions): Promise<boolean> {
@@ -54,53 +64,57 @@ async function sendViaSmtp(opts: EmailOptions): Promise<boolean> {
   const pass = Deno.env.get('SMTP_PASS')
   if (!host || !user || !pass) return false
   const port = parseInt(Deno.env.get('SMTP_PORT') || '587')
-  const secure = Deno.env.get('SMTP_SECURE') === 'true'
+  const implicitTls = Deno.env.get('SMTP_SECURE') === 'true' || port === 465
+
+  let client: SMTPClient | null = null
   try {
-    const conn = secure
-      ? await Deno.connectTls({ hostname: host, port })
-      : await Deno.connect({ hostname: host, port })
-    const enc = new TextEncoder()
-    const dec = new TextDecoder()
-    const read = async () => {
-      const buf = new Uint8Array(4096)
-      const n = await conn.read(buf)
-      return n ? dec.decode(buf.subarray(0, n)) : ''
-    }
-    const cmd = async (c: string) => {
-      await conn.write(enc.encode(c + '\r\n'))
-      return read()
-    }
-    await read()
-    await cmd('EHLO conveyquote')
-    await cmd('AUTH LOGIN')
-    await cmd(btoa(user))
-    const authRes = await cmd(btoa(pass))
-    if (!authRes.startsWith('235')) {
-      conn.close()
-      return false
-    }
-    await cmd(`MAIL FROM:<${opts.from}>`)
-    await cmd(`RCPT TO:<${opts.to}>`)
-    await cmd('DATA')
-    let msg = `From: ${opts.fromName || 'ConveyQuote'} <${opts.from}>\r\n`
-    msg += `To: ${opts.to}\r\n`
-    msg += `Subject: ${opts.subject}\r\n`
-    msg += `MIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\n\r\n`
-    msg += opts.html + '\r\n.'
-    const dataRes = await cmd(msg)
-    await cmd('QUIT')
-    conn.close()
-    return dataRes.startsWith('250')
+    client = new SMTPClient({
+      connection: {
+        hostname: host,
+        port,
+        tls: implicitTls,
+        auth: { username: user, password: pass },
+      },
+    })
+    await client.send({
+      from: opts.fromName ? `${opts.fromName} <${opts.from}>` : opts.from,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+    })
+    await client.close()
+    return true
   } catch (err) {
     console.error('SMTP error:', err)
+    if (client) {
+      try { await client.close() } catch (_) { /* ignore */ }
+    }
     return false
   }
 }
 
 async function sendEmail(opts: EmailOptions): Promise<{ ok: boolean; provider: string }> {
-  if (await sendViaSmtp(opts)) return { ok: true, provider: 'smtp' }
-  if (await sendViaSendGrid(opts)) return { ok: true, provider: 'sendgrid' }
-  if (await sendViaResend(opts)) return { ok: true, provider: 'resend' }
+  try {
+    if (await withTimeout(sendViaSmtp(opts), 15000, 'SMTP')) {
+      return { ok: true, provider: 'smtp' }
+    }
+  } catch (e) {
+    console.warn('SMTP failed:', e)
+  }
+  try {
+    if (await withTimeout(sendViaSendGrid(opts), 15000, 'SendGrid')) {
+      return { ok: true, provider: 'sendgrid' }
+    }
+  } catch (e) {
+    console.warn('SendGrid failed:', e)
+  }
+  try {
+    if (await withTimeout(sendViaResend(opts), 15000, 'Resend')) {
+      return { ok: true, provider: 'resend' }
+    }
+  } catch (e) {
+    console.warn('Resend failed:', e)
+  }
   return { ok: false, provider: 'none' }
 }
 

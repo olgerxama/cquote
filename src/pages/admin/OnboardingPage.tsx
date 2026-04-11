@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Scale } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -8,7 +8,56 @@ export default function OnboardingPage() {
   const { user } = useAuth()
   const [firmName, setFirmName] = useState('')
   const [loading, setLoading] = useState(false)
+  const [checking, setChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // ── Self-repair on mount ──
+  // Users who already have a firm should never see this form. If we find an
+  // existing firm_users link or owned firm, transparently bounce them into
+  // /admin (and repair the firm_users link if it's missing).
+  useEffect(() => {
+    let cancelled = false
+    async function autoRepair() {
+      if (!user) {
+        setChecking(false)
+        return
+      }
+      try {
+        const { data: existingLink } = await supabase
+          .from('firm_users')
+          .select('firm_id')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        if (existingLink?.firm_id) {
+          if (!cancelled) window.location.href = '/admin'
+          return
+        }
+
+        const { data: ownedFirm } = await supabase
+          .from('firms')
+          .select('id')
+          .eq('owner_user_id', user.id)
+          .maybeSingle()
+
+        if (ownedFirm?.id) {
+          await supabase
+            .from('firm_users')
+            .insert({ user_id: user.id, firm_id: ownedFirm.id, role: 'admin' })
+          if (!cancelled) window.location.href = '/admin'
+          return
+        }
+      } catch (err) {
+        console.error('Onboarding auto-repair failed:', err)
+      } finally {
+        if (!cancelled) setChecking(false)
+      }
+    }
+    autoRepair()
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -16,13 +65,16 @@ export default function OnboardingPage() {
       setError('Not logged in. Please refresh and try again.')
       return
     }
+    if (!firmName.trim()) {
+      setError('Please enter a firm name.')
+      return
+    }
     setLoading(true)
     setError(null)
 
     try {
-      // ── Self-repair: check if this user already has a firm via firm_users ──
-      // This handles accounts that previously created a firm but whose
-      // firm_users link was never written (e.g. RLS race on first signup).
+      // Re-check in case the user signed up in another tab while this form
+      // was open — avoids spurious "duplicate" RLS errors.
       const { data: existingLink } = await supabase
         .from('firm_users')
         .select('firm_id')
@@ -30,12 +82,10 @@ export default function OnboardingPage() {
         .maybeSingle()
 
       if (existingLink?.firm_id) {
-        // firm_users link already exists — just reload into admin
         window.location.href = '/admin'
         return
       }
 
-      // Check if the user owns a firm directly (firm_users row may be missing)
       const { data: ownedFirm } = await supabase
         .from('firms')
         .select('id')
@@ -43,11 +93,9 @@ export default function OnboardingPage() {
         .maybeSingle()
 
       if (ownedFirm?.id) {
-        // Firm exists but firm_users link is missing — repair it
         const { error: repairError } = await supabase
           .from('firm_users')
           .insert({ user_id: user.id, firm_id: ownedFirm.id, role: 'admin' })
-
         if (repairError) {
           console.error('firm_users repair error:', repairError)
           setError(repairError.message)
@@ -87,6 +135,17 @@ export default function OnboardingPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+        <div className="text-center">
+          <Scale className="h-10 w-10 text-primary mx-auto animate-pulse" />
+          <p className="mt-4 text-sm text-muted-foreground">Checking your account…</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -138,10 +197,10 @@ export default function OnboardingPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !firmName.trim()}
             className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            {loading ? 'Checking…' : firmName.trim() ? 'Create Firm & Continue' : 'Continue →'}
+            {loading ? 'Creating…' : 'Create Firm & Continue'}
           </button>
         </form>
 
