@@ -184,17 +184,22 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Merge instruction details into answers
+    // Merge instruction details into answers AND set the dedicated column so
+    // Postgres can efficiently sort/filter instructed leads.
     const existingAnswers = (lead.answers || {}) as Record<string, unknown>
+    const submittedAt = new Date().toISOString()
     const updatedAnswers = {
       ...existingAnswers,
       instruction: details,
-      instruction_submitted_at: new Date().toISOString(),
+      instruction_submitted_at: submittedAt,
     }
 
     const { error: updateError } = await supabase
       .from('leads')
-      .update({ answers: updatedAnswers })
+      .update({
+        answers: updatedAnswers,
+        instruction_submitted_at: submittedAt,
+      })
       .eq('id', leadId)
 
     if (updateError) {

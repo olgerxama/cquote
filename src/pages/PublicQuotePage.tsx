@@ -47,7 +47,8 @@ const TIMELINE_OPTS = [
 export default function PublicQuotePage() {
   const { firmSlug } = useParams<{ firmSlug: string }>()
   const [searchParams] = useSearchParams()
-  const isEmbed = searchParams.get('embed') === 'true'
+  const embedParam = searchParams.get('embed')
+  const isEmbed = embedParam === '1' || embedParam === 'true'
 
   const form = useQuoteForm()
   const [submitted, setSubmitted] = useState(false)
@@ -114,14 +115,32 @@ export default function PublicQuotePage() {
     return services
   }, [config])
 
-  // Embed height publishing
+  // Embed height publishing — use ResizeObserver to push height changes to parent
+  // so auto-resizing iframe snippets can adapt. Matches the `conveyquote:height`
+  // message contract documented in Settings → Embed.
   useEffect(() => {
     if (!isEmbed) return
-    const interval = setInterval(() => {
-      const height = document.body.scrollHeight
-      window.parent.postMessage({ type: 'conveyquote-resize', height }, '*')
-    }, 500)
-    return () => clearInterval(interval)
+    let lastHeight = 0
+    const publish = () => {
+      const height = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight
+      )
+      if (height !== lastHeight) {
+        lastHeight = height
+        window.parent.postMessage({ type: 'conveyquote:height', height }, '*')
+      }
+    }
+    publish()
+    const ro = new ResizeObserver(publish)
+    ro.observe(document.body)
+    window.addEventListener('load', publish)
+    const interval = setInterval(publish, 1000) // safety net for late renders
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('load', publish)
+      clearInterval(interval)
+    }
   }, [isEmbed])
 
   function checkManualReview(): boolean {
