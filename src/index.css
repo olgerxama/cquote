@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.145 0.017 285.823);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.145 0.017 285.823);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.145 0.017 285.823);
+  --color-primary: oklch(0.279 0.041 260.031);
+  --color-primary-foreground: oklch(0.985 0.002 247.858);
+  --color-secondary: oklch(0.968 0.007 247.858);
+  --color-secondary-foreground: oklch(0.279 0.041 260.031);
+  --color-muted: oklch(0.968 0.007 247.858);
+  --color-muted-foreground: oklch(0.551 0.027 264.364);
+  --color-accent: oklch(0.968 0.007 247.858);
+  --color-accent-foreground: oklch(0.279 0.041 260.031);
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-destructive-foreground: oklch(0.985 0.002 247.858);
+  --color-border: oklch(0.91 0.013 264.364);
+  --color-input: oklch(0.91 0.013 264.364);
+  --color-ring: oklch(0.279 0.041 260.031);
+  --radius: 0.625rem;
+
+  --color-sidebar: oklch(0.985 0.002 247.858);
+  --color-sidebar-foreground: oklch(0.145 0.017 285.823);
+  --color-sidebar-primary: oklch(0.279 0.041 260.031);
+  --color-sidebar-primary-foreground: oklch(0.985 0.002 247.858);
+  --color-sidebar-accent: oklch(0.968 0.007 247.858);
+  --color-sidebar-accent-foreground: oklch(0.279 0.041 260.031);
+  --color-sidebar-border: oklch(0.91 0.013 264.364);
+  --color-sidebar-ring: oklch(0.279 0.041 260.031);
+
+  --color-chart-1: oklch(0.646 0.222 41.116);
+  --color-chart-2: oklch(0.6 0.118 184.714);
+  --color-chart-3: oklch(0.398 0.07 227.392);
+  --color-chart-4: oklch(0.828 0.189 84.429);
+  --color-chart-5: oklch(0.769 0.188 70.08);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+}
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
