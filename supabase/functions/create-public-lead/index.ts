@@ -1,13 +1,21 @@
 // Self-contained edge function: create-public-lead
 // Handles a public quote form submission: creates the lead, optionally creates
-// a quote + items, sends the firm's new-enquiry notification, and optionally
-// auto-sends the customer quote email.
+// a quote + items, sends the firm a new-enquiry notification, and sends the
+// customer a thank-you email with a PDF estimate attached.
+//
+// Email is sent ONLY via SMTP. There are no third-party API providers.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
+import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+interface EmailAttachment {
+  filename: string
+  content: string // base64
 }
 
 interface EmailOptions {
@@ -16,9 +24,18 @@ interface EmailOptions {
   fromName?: string
   subject: string
   html: string
+  attachments?: EmailAttachment[]
 }
 
-// Hard timeout so a hanging provider can never stall the edge function.
+interface QuoteItemInput {
+  description?: string
+  amount?: number
+  is_vatable?: boolean
+  item_type?: string
+  sort_order?: number
+}
+
+// Hard timeout so a hanging SMTP server can never stall the edge function.
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     p,
@@ -28,97 +45,66 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ])
 }
 
-async function sendViaSendGrid(opts: EmailOptions): Promise<boolean> {
-  const apiKey = Deno.env.get('SENDGRID_API_KEY')
-  if (!apiKey) return false
-  const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: opts.to }] }],
-      from: { email: opts.from, name: opts.fromName || 'ConveyQuote' },
-      subject: opts.subject,
-      content: [{ type: 'text/html', value: opts.html }],
-    }),
-  })
-  return res.ok
-}
-
-async function sendViaResend(opts: EmailOptions): Promise<boolean> {
-  const apiKey = Deno.env.get('RESEND_API_KEY')
-  if (!apiKey) return false
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: opts.fromName ? `${opts.fromName} <${opts.from}>` : opts.from,
-      to: [opts.to],
-      subject: opts.subject,
-      html: opts.html,
-    }),
-  })
-  return res.ok
-}
-
-async function sendViaSmtp(opts: EmailOptions): Promise<boolean> {
+async function sendViaSmtp(opts: EmailOptions): Promise<void> {
   const host = Deno.env.get('SMTP_HOST')
   const user = Deno.env.get('SMTP_USER')
   const pass = Deno.env.get('SMTP_PASS')
-  if (!host || !user || !pass) return false
+  if (!host || !user || !pass) {
+    throw new Error('SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS missing)')
+  }
   const port = parseInt(Deno.env.get('SMTP_PORT') || '587')
   // Port 465 uses implicit TLS; 587/25 start plain and upgrade via STARTTLS.
   const implicitTls = Deno.env.get('SMTP_SECURE') === 'true' || port === 465
 
-  let client: SMTPClient | null = null
+  // Most SMTP relays reject any from-address the authenticated user does
+  // not own (553 5.7.1). Force the SMTP envelope sender to match SMTP_USER
+  // (or an explicitly-configured SMTP_FROM_EMAIL on the same domain).
+  const smtpFromEmail = Deno.env.get('SMTP_FROM_EMAIL') || user
+  const fromHeader = opts.fromName ? `${opts.fromName} <${smtpFromEmail}>` : smtpFromEmail
+  // If the caller wanted a different reply destination (e.g. the firm's
+  // address), expose it via Reply-To rather than From.
+  const replyTo = opts.from && opts.from !== smtpFromEmail ? opts.from : undefined
+
+  const client = new SMTPClient({
+    connection: {
+      hostname: host,
+      port,
+      tls: implicitTls,
+      auth: { username: user, password: pass },
+    },
+  })
+
   try {
-    client = new SMTPClient({
-      connection: {
-        hostname: host,
-        port,
-        tls: implicitTls,
-        auth: { username: user, password: pass },
-      },
-    })
-    await client.send({
-      from: opts.fromName ? `${opts.fromName} <${opts.from}>` : opts.from,
+    const message: Record<string, unknown> = {
+      from: fromHeader,
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
-    })
-    await client.close()
-    return true
-  } catch (err) {
-    console.error('SMTP error:', err)
-    if (client) {
-      try { await client.close() } catch (_) { /* ignore */ }
     }
-    return false
+    if (replyTo) message.replyTo = replyTo
+    if (opts.attachments?.length) {
+      message.attachments = opts.attachments.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        encoding: 'base64',
+        contentType: 'application/pdf',
+      }))
+    }
+    // deno-lint-ignore no-explicit-any
+    await client.send(message as any)
+  } finally {
+    try { await client.close() } catch (_) { /* ignore */ }
   }
 }
 
-async function sendEmail(opts: EmailOptions): Promise<{ ok: boolean; provider: string }> {
+async function sendEmail(opts: EmailOptions): Promise<{ ok: boolean; error?: string }> {
   try {
-    if (await withTimeout(sendViaSmtp(opts), 15000, 'SMTP')) {
-      return { ok: true, provider: 'smtp' }
-    }
+    await withTimeout(sendViaSmtp(opts), 20000, 'SMTP')
+    return { ok: true }
   } catch (e) {
-    console.warn('SMTP failed:', e)
+    console.error('SMTP send failed:', e)
+    return { ok: false, error: String(e) }
   }
-  try {
-    if (await withTimeout(sendViaSendGrid(opts), 15000, 'SendGrid')) {
-      return { ok: true, provider: 'sendgrid' }
-    }
-  } catch (e) {
-    console.warn('SendGrid failed:', e)
-  }
-  try {
-    if (await withTimeout(sendViaResend(opts), 15000, 'Resend')) {
-      return { ok: true, provider: 'resend' }
-    }
-  } catch (e) {
-    console.warn('Resend failed:', e)
-  }
-  return { ok: false, provider: 'none' }
 }
 
 function getFromEmail(): string {
@@ -126,6 +112,7 @@ function getFromEmail(): string {
     Deno.env.get('SMTP_FROM_EMAIL') ||
     Deno.env.get('EMAIL_FROM') ||
     Deno.env.get('PLATFORM_FROM_EMAIL') ||
+    Deno.env.get('SMTP_USER') ||
     'noreply@conveyquote.com'
   )
 }
@@ -134,24 +121,136 @@ function getBaseUrl(): string {
   return Deno.env.get('APP_BASE_URL') || 'http://localhost:5173'
 }
 
-function quoteEmailHtml(p: {
+// ─── PDF generation ──────────────────────────────────────────────────────
+// Builds a one-page A4 quote PDF using pdf-lib (pure JS, runs in Deno edge
+// runtime). Returns base64 so it can be attached straight to an email.
+async function generateQuotePdfBase64(p: {
+  firmName: string
+  leadName: string
+  leadEmail: string
+  serviceType: string
+  referenceCode?: string
+  items: QuoteItemInput[]
+  subtotal: number
+  vatTotal: number
+  grandTotal: number
+}): Promise<string> {
+  const pdf = await PDFDocument.create()
+  const page = pdf.addPage([595, 842]) // A4 portrait, points
+  const { width } = page.getSize()
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const navy = rgb(0.118, 0.227, 0.373)
+  const grey = rgb(0.4, 0.4, 0.4)
+  const line = rgb(0.85, 0.85, 0.85)
+
+  let y = 800
+  page.drawText(p.firmName, { x: 40, y, font: bold, size: 18, color: navy })
+  y -= 28
+  page.drawText('Conveyancing Quote Estimate', { x: 40, y, font, size: 12, color: grey })
+  y -= 22
+  if (p.referenceCode) {
+    page.drawText(`Reference: ${p.referenceCode}`, { x: 40, y, font, size: 10, color: grey })
+    y -= 14
+  }
+  page.drawText(`Date: ${new Date().toLocaleDateString('en-GB')}`, {
+    x: 40, y, font, size: 10, color: grey,
+  })
+  y -= 24
+
+  // Customer block
+  page.drawText('Prepared for:', { x: 40, y, font: bold, size: 11, color: navy })
+  y -= 14
+  page.drawText(p.leadName, { x: 40, y, font, size: 11 })
+  y -= 14
+  page.drawText(p.leadEmail, { x: 40, y, font, size: 10, color: grey })
+  y -= 14
+  page.drawText(`Service: ${p.serviceType.replace('_', ' & ')}`, {
+    x: 40, y, font, size: 10, color: grey,
+  })
+  y -= 24
+
+  // Items header
+  page.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, color: line, thickness: 1 })
+  y -= 16
+  page.drawText('Description', { x: 40, y, font: bold, size: 10, color: navy })
+  page.drawText('VAT', { x: 380, y, font: bold, size: 10, color: navy })
+  page.drawText('Amount', { x: 480, y, font: bold, size: 10, color: navy })
+  y -= 8
+  page.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, color: line, thickness: 1 })
+  y -= 14
+
+  for (const item of p.items) {
+    if (y < 120) break // safety
+    const desc = String(item.description || 'Item').slice(0, 60)
+    const amt = Number(item.amount || 0)
+    page.drawText(desc, { x: 40, y, font, size: 10 })
+    page.drawText(item.is_vatable === false ? 'No' : 'Yes', { x: 380, y, font, size: 10 })
+    page.drawText(`£${amt.toFixed(2)}`, { x: 480, y, font, size: 10 })
+    y -= 14
+  }
+
+  y -= 6
+  page.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, color: line, thickness: 1 })
+  y -= 16
+
+  // Totals
+  page.drawText('Subtotal', { x: 380, y, font, size: 10, color: grey })
+  page.drawText(`£${p.subtotal.toFixed(2)}`, { x: 480, y, font, size: 10 })
+  y -= 14
+  page.drawText('VAT', { x: 380, y, font, size: 10, color: grey })
+  page.drawText(`£${p.vatTotal.toFixed(2)}`, { x: 480, y, font, size: 10 })
+  y -= 16
+  page.drawText('Total (inc VAT)', { x: 380, y, font: bold, size: 12, color: navy })
+  page.drawText(`£${p.grandTotal.toFixed(2)}`, { x: 480, y, font: bold, size: 12, color: navy })
+
+  // Footer
+  page.drawText(
+    'This is an estimate only and may be subject to change. Please contact us for a full breakdown.',
+    { x: 40, y: 60, font, size: 8, color: grey },
+  )
+
+  const bytes = await pdf.save()
+  // Encode to base64
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+// ─── Email templates ─────────────────────────────────────────────────────
+function customerThankYouHtml(p: {
   firmName: string
   leadName: string
   serviceType: string
-  grandTotal: number
+  grandTotal?: number
   referenceCode?: string
   instructionLink?: string
-  documentType?: string
+  hasPdf: boolean
 }): string {
+  const total = p.grandTotal != null
+    ? `<p style="font-size:24px;font-weight:bold;color:#1e3a5f;margin:16px 0;">Estimated Total: &pound;${p.grandTotal.toFixed(2)} (inc. VAT)</p>`
+    : ''
+  const ref = p.referenceCode ? `<p><strong>Reference:</strong> ${p.referenceCode}</p>` : ''
+  const cta = p.instructionLink
+    ? `<p style="margin-top:24px;">Ready to proceed? Click below to instruct us:</p>
+<p><a href="${p.instructionLink}" style="display:inline-block;background:#1e3a5f;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:600;">Instruct Now</a></p>`
+    : ''
+  const pdfNote = p.hasPdf
+    ? '<p style="color:#666;font-size:13px;">Your detailed quote estimate is attached to this email as a PDF.</p>'
+    : ''
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
-<h2 style="color:#1e3a5f;">${p.firmName}</h2>
+<h2 style="color:#1e3a5f;margin-bottom:8px;">${p.firmName}</h2>
 <p>Dear ${p.leadName},</p>
-<p>Thank you for your ${p.serviceType.replace('_', ' & ')} enquiry. Please find your ${p.documentType || 'estimate'} details below.</p>
-${p.referenceCode ? `<p><strong>Reference:</strong> ${p.referenceCode}</p>` : ''}
-<p style="font-size:24px;font-weight:bold;color:#1e3a5f;">Total: &pound;${p.grandTotal.toFixed(2)} (inc. VAT)</p>
-${p.instructionLink ? `<p>Ready to proceed? Click the button below to instruct us:</p>
-<p><a href="${p.instructionLink}" style="display:inline-block;background:#1e3a5f;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;">Instruct Now</a></p>` : ''}
+<p>Thank you for reaching out about your ${p.serviceType.replace('_', ' & ')} matter.
+We've received your enquiry and a member of our team will be in touch shortly.</p>
+${ref}
+${total}
+${pdfNote}
+${cta}
 <p style="color:#666;font-size:12px;margin-top:30px;">This is an estimate only and may be subject to change. Please contact us for a full breakdown.</p>
 </body></html>`
 }
@@ -276,10 +375,10 @@ Deno.serve(async (req) => {
     }
 
     const instructionRef = referenceCode || leadId
-    const emailTasks: Array<{ task: string; result?: unknown }> = []
+    const emailTasks: Array<{ task: string; ok: boolean; error?: string }> = []
     const fromEmail = getFromEmail()
 
-    // Firm notification
+    // ── Firm notification (always) ──
     try {
       const firmEmail = firm.reply_to_email || fromEmail
       const result = await sendEmail({
@@ -296,42 +395,70 @@ Deno.serve(async (req) => {
           status: lead.status || 'new',
         }),
       })
-      emailTasks.push({ task: 'firm_notification', result })
+      emailTasks.push({ task: 'firm_notification', ...result })
     } catch (err) {
-      emailTasks.push({ task: 'firm_notification', result: { error: String(err) } })
+      emailTasks.push({ task: 'firm_notification', ok: false, error: String(err) })
     }
 
-    // Customer auto quote email
-    if (firm.auto_send_quote_emails && lead.status !== 'review' && totals) {
-      try {
-        const baseUrl = getBaseUrl()
-        const instructionLink = `${baseUrl}/quote/${firm.slug}/instruct?ref=${instructionRef}`
-        const result = await sendEmail({
-          to: lead.email,
-          from: fromEmail,
-          fromName: firm.sender_display_name || firm.name,
-          subject: `Your Quote from ${firm.name}`,
-          html: quoteEmailHtml({
+    // ── Customer thank-you (always, with PDF if we have totals) ──
+    try {
+      const baseUrl = getBaseUrl()
+      const instructionLink =
+        lead.status !== 'review' && totals
+          ? `${baseUrl}/quote/${firm.slug}/instruct?ref=${instructionRef}`
+          : undefined
+
+      let attachments: EmailAttachment[] | undefined
+      if (totals && quoteItems?.length) {
+        try {
+          const pdfBase64 = await generateQuotePdfBase64({
             firmName: firm.name,
             leadName: lead.full_name,
+            leadEmail: lead.email,
             serviceType: lead.service_type,
-            grandTotal: totals.grandTotal || 0,
             referenceCode: referenceCode || undefined,
-            instructionLink,
-            documentType: 'estimate',
-          }),
-        })
-        emailTasks.push({ task: 'customer_quote', result })
-
-        if (quoteId) {
-          await supabase
-            .from('quotes')
-            .update({ status: 'sent', sent_at: new Date().toISOString() })
-            .eq('id', quoteId)
+            items: quoteItems,
+            subtotal: totals.subtotal || 0,
+            vatTotal: totals.vatTotal || 0,
+            grandTotal: totals.grandTotal || 0,
+          })
+          attachments = [
+            {
+              filename: `quote-${referenceCode || leadId}.pdf`,
+              content: pdfBase64,
+            },
+          ]
+        } catch (pdfErr) {
+          console.error('PDF generation failed:', pdfErr)
         }
-      } catch (err) {
-        emailTasks.push({ task: 'customer_quote', result: { error: String(err) } })
       }
+
+      const result = await sendEmail({
+        to: lead.email,
+        from: fromEmail,
+        fromName: firm.sender_display_name || firm.name,
+        subject: `Thank you — your quote from ${firm.name}`,
+        html: customerThankYouHtml({
+          firmName: firm.name,
+          leadName: lead.full_name,
+          serviceType: lead.service_type,
+          grandTotal: totals?.grandTotal,
+          referenceCode: referenceCode || undefined,
+          instructionLink,
+          hasPdf: !!attachments,
+        }),
+        attachments,
+      })
+      emailTasks.push({ task: 'customer_thank_you', ...result })
+
+      if (quoteId && result.ok) {
+        await supabase
+          .from('quotes')
+          .update({ status: 'sent', sent_at: new Date().toISOString() })
+          .eq('id', quoteId)
+      }
+    } catch (err) {
+      emailTasks.push({ task: 'customer_thank_you', ok: false, error: String(err) })
     }
 
     return new Response(

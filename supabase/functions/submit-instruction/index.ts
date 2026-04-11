@@ -26,38 +26,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ])
 }
 
-async function sendViaSendGrid(opts: EmailOptions): Promise<boolean> {
-  const apiKey = Deno.env.get('SENDGRID_API_KEY')
-  if (!apiKey) return false
-  const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: opts.to }] }],
-      from: { email: opts.from, name: opts.fromName || 'ConveyQuote' },
-      subject: opts.subject,
-      content: [{ type: 'text/html', value: opts.html }],
-    }),
-  })
-  return res.ok
-}
-
-async function sendViaResend(opts: EmailOptions): Promise<boolean> {
-  const apiKey = Deno.env.get('RESEND_API_KEY')
-  if (!apiKey) return false
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: opts.fromName ? `${opts.fromName} <${opts.from}>` : opts.from,
-      to: [opts.to],
-      subject: opts.subject,
-      html: opts.html,
-    }),
-  })
-  return res.ok
-}
-
 async function sendViaSmtp(opts: EmailOptions): Promise<boolean> {
   const host = Deno.env.get('SMTP_HOST')
   const user = Deno.env.get('SMTP_USER')
@@ -65,6 +33,12 @@ async function sendViaSmtp(opts: EmailOptions): Promise<boolean> {
   if (!host || !user || !pass) return false
   const port = parseInt(Deno.env.get('SMTP_PORT') || '587')
   const implicitTls = Deno.env.get('SMTP_SECURE') === 'true' || port === 465
+
+  // Most SMTP relays reject any from-address the authenticated user does
+  // not own (553 5.7.1). Force the SMTP envelope sender to match SMTP_USER.
+  const smtpFromEmail = Deno.env.get('SMTP_FROM_EMAIL') || user
+  const fromHeader = opts.fromName ? `${opts.fromName} <${smtpFromEmail}>` : smtpFromEmail
+  const replyTo = opts.from && opts.from !== smtpFromEmail ? opts.from : undefined
 
   let client: SMTPClient | null = null
   try {
@@ -76,12 +50,15 @@ async function sendViaSmtp(opts: EmailOptions): Promise<boolean> {
         auth: { username: user, password: pass },
       },
     })
-    await client.send({
-      from: opts.fromName ? `${opts.fromName} <${opts.from}>` : opts.from,
+    const message: Record<string, unknown> = {
+      from: fromHeader,
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
-    })
+    }
+    if (replyTo) message.replyTo = replyTo
+    // deno-lint-ignore no-explicit-any
+    await client.send(message as any)
     await client.close()
     return true
   } catch (err) {
@@ -93,29 +70,14 @@ async function sendViaSmtp(opts: EmailOptions): Promise<boolean> {
   }
 }
 
-async function sendEmail(opts: EmailOptions): Promise<{ ok: boolean; provider: string }> {
+async function sendEmail(opts: EmailOptions): Promise<{ ok: boolean; error?: string }> {
   try {
-    if (await withTimeout(sendViaSmtp(opts), 15000, 'SMTP')) {
-      return { ok: true, provider: 'smtp' }
-    }
+    const ok = await withTimeout(sendViaSmtp(opts), 20000, 'SMTP')
+    return ok ? { ok: true } : { ok: false, error: 'SMTP send failed' }
   } catch (e) {
-    console.warn('SMTP failed:', e)
+    console.error('SMTP failed:', e)
+    return { ok: false, error: String(e) }
   }
-  try {
-    if (await withTimeout(sendViaSendGrid(opts), 15000, 'SendGrid')) {
-      return { ok: true, provider: 'sendgrid' }
-    }
-  } catch (e) {
-    console.warn('SendGrid failed:', e)
-  }
-  try {
-    if (await withTimeout(sendViaResend(opts), 15000, 'Resend')) {
-      return { ok: true, provider: 'resend' }
-    }
-  } catch (e) {
-    console.warn('Resend failed:', e)
-  }
-  return { ok: false, provider: 'none' }
 }
 
 function getFromEmail(): string {
@@ -123,6 +85,7 @@ function getFromEmail(): string {
     Deno.env.get('SMTP_FROM_EMAIL') ||
     Deno.env.get('EMAIL_FROM') ||
     Deno.env.get('PLATFORM_FROM_EMAIL') ||
+    Deno.env.get('SMTP_USER') ||
     'noreply@conveyquote.com'
   )
 }
@@ -226,7 +189,7 @@ Deno.serve(async (req) => {
     // Notify firm
     const fromEmail = getFromEmail()
     const firmEmail = firm.reply_to_email || fromEmail
-    let emailResult: { ok: boolean; provider: string } = { ok: false, provider: 'skipped' }
+    let emailResult: { ok: boolean; error?: string } = { ok: false, error: 'skipped' }
     try {
       emailResult = await sendEmail({
         to: firmEmail,
@@ -242,7 +205,7 @@ Deno.serve(async (req) => {
         }),
       })
     } catch (err) {
-      emailResult = { ok: false, provider: `error:${String(err)}` }
+      emailResult = { ok: false, error: String(err) }
     }
 
     return new Response(
