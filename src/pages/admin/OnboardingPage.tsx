@@ -19,34 +19,74 @@ export default function OnboardingPage() {
     setLoading(true)
     setError(null)
 
-    const slug = generateSlug(firmName)
+    try {
+      // ── Self-repair: check if this user already has a firm via firm_users ──
+      // This handles accounts that previously created a firm but whose
+      // firm_users link was never written (e.g. RLS race on first signup).
+      const { data: existingLink } = await supabase
+        .from('firm_users')
+        .select('firm_id')
+        .eq('user_id', user.id)
+        .maybeSingle()
 
-    const { data: firm, error: firmError } = await supabase
-      .from('firms')
-      .insert({ name: firmName, slug, owner_user_id: user.id })
-      .select('id')
-      .single()
+      if (existingLink?.firm_id) {
+        // firm_users link already exists — just reload into admin
+        window.location.href = '/admin'
+        return
+      }
 
-    if (firmError) {
-      console.error('firms insert error:', firmError)
-      setError(firmError.message)
+      // Check if the user owns a firm directly (firm_users row may be missing)
+      const { data: ownedFirm } = await supabase
+        .from('firms')
+        .select('id')
+        .eq('owner_user_id', user.id)
+        .maybeSingle()
+
+      if (ownedFirm?.id) {
+        // Firm exists but firm_users link is missing — repair it
+        const { error: repairError } = await supabase
+          .from('firm_users')
+          .insert({ user_id: user.id, firm_id: ownedFirm.id, role: 'admin' })
+
+        if (repairError) {
+          console.error('firm_users repair error:', repairError)
+          setError(repairError.message)
+          return
+        }
+        window.location.href = '/admin'
+        return
+      }
+
+      // ── Normal path: create a brand-new firm ──
+      const slug = generateSlug(firmName)
+
+      const { data: firm, error: firmError } = await supabase
+        .from('firms')
+        .insert({ name: firmName, slug, owner_user_id: user.id })
+        .select('id')
+        .single()
+
+      if (firmError) {
+        console.error('firms insert error:', firmError)
+        setError(firmError.message)
+        return
+      }
+
+      const { error: linkError } = await supabase
+        .from('firm_users')
+        .insert({ user_id: user.id, firm_id: firm.id, role: 'admin' })
+
+      if (linkError) {
+        console.error('firm_users insert error:', linkError)
+        setError(linkError.message)
+        return
+      }
+
+      // Full reload so AuthContext re-resolves firmId from the new firm_users row
+      window.location.href = '/admin'
+    } finally {
       setLoading(false)
-      return
     }
-
-    const { error: linkError } = await supabase
-      .from('firm_users')
-      .insert({ user_id: user.id, firm_id: firm.id, role: 'admin' })
-
-    if (linkError) {
-      console.error('firm_users insert error:', linkError)
-      setError(linkError.message)
-      setLoading(false)
-      return
-    }
-
-    // Full reload so AuthContext re-resolves firmId from the new firm_users row
-    window.location.href = '/admin'
   }
 
   return (
@@ -69,7 +109,6 @@ export default function OnboardingPage() {
             <input
               id="firmName"
               type="text"
-              required
               value={firmName}
               onChange={(e) => {
                 setFirmName(e.target.value)
@@ -99,10 +138,10 @@ export default function OnboardingPage() {
 
           <button
             type="submit"
-            disabled={loading || !firmName.trim()}
+            disabled={loading}
             className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            {loading ? 'Creating firm…' : 'Create Firm & Continue'}
+            {loading ? 'Checking…' : firmName.trim() ? 'Create Firm & Continue' : 'Continue →'}
           </button>
         </form>
 
