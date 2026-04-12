@@ -226,48 +226,33 @@ export default function PublicQuotePage() {
     }
 
     try {
-      // Hard client-side timeout — never let the submit button hang.
-      const invokePromise = supabase.functions.invoke('create-public-lead', {
-        body: {
-          lead: leadPayload,
-          discountCodeId: validatedDiscount?.id || null,
-          totals: isReview ? undefined : {
-            subtotal: result.breakdown.subtotal,
-            vatTotal: result.breakdown.vatAmount,
-            grandTotal: result.breakdown.grandTotal,
-          },
-          quoteItems: isReview ? undefined : result.breakdown.items.map((item, i) => ({
-            description: item.description,
-            amount: item.amount,
-            is_vatable: item.is_vatable,
-            item_type: item.item_type,
-            sort_order: i,
-          })),
+      // Use supabase.rpc() instead of edge functions to avoid CORS issues.
+      // The RPC goes through the REST API (PostgREST) which has CORS
+      // handled by the Supabase gateway — works from any embedded origin.
+      // Emails are triggered server-side via pg_net (no browser involved).
+      const rpcPromise = supabase.rpc('create_public_lead', {
+        p_lead: leadPayload,
+        p_discount_code_id: validatedDiscount?.id || null,
+        p_totals: isReview ? null : {
+          subtotal: result.breakdown.subtotal,
+          vatTotal: result.breakdown.vatAmount,
+          grandTotal: result.breakdown.grandTotal,
         },
+        p_quote_items: isReview ? null : result.breakdown.items.map((item, i) => ({
+          description: item.description,
+          amount: item.amount,
+          is_vatable: item.is_vatable,
+          item_type: item.item_type,
+          sort_order: i,
+        })),
       })
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Request timed out')), 45000),
       )
-      const { data, error } = await Promise.race([invokePromise, timeoutPromise])
+      const { data, error } = await Promise.race([rpcPromise, timeoutPromise])
 
       if (error) {
-        // The Supabase functions client wraps non-2xx responses in a
-        // FunctionsHttpError. Try to extract the body so we surface the
-        // real cause (e.g. "Firm not available", SMTP failure, etc).
-        let detail = error.message || 'Submission failed'
-        // deno-lint-ignore no-explicit-any
-        const anyErr = error as any
-        if (anyErr?.context?.json) {
-          try {
-            const body = await anyErr.context.json()
-            detail = body?.detail || body?.error || detail
-          } catch (_) { /* ignore */ }
-        }
-        throw new Error(detail)
-      }
-
-      if (data?.error) {
-        throw new Error(data.detail || data.error)
+        throw new Error(error.message || 'Submission failed')
       }
 
       setQuoteResult(result)
@@ -275,7 +260,7 @@ export default function PublicQuotePage() {
       setSubmitted(true)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error('create-public-lead failed:', err)
+      console.error('create-public-lead RPC failed:', err)
       toast.error(`Failed to submit: ${message}`)
       setSubmitting(false)
       return

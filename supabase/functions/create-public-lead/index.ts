@@ -284,19 +284,160 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { lead, discountCodeId, totals, quoteItems } = await req.json()
+    const body = await req.json()
+    const { lead, discountCodeId, totals, quoteItems, notifyLeadId, firmId } = body
 
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    )
+
+    // ── Email-only mode: called by pg_net after the RPC function creates
+    //    the lead. Skip all DB writes — just look up and send emails. ──
+    if (notifyLeadId) {
+      const { data: existingLead } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('id', notifyLeadId)
+        .single()
+      if (!existingLead) {
+        return new Response(JSON.stringify({ error: 'Lead not found' }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      const fId = firmId || existingLead.firm_id
+      const { data: notifyFirm } = await supabase
+        .from('firms')
+        .select('*')
+        .eq('id', fId)
+        .single()
+      if (!notifyFirm) {
+        return new Response(JSON.stringify({ error: 'Firm not found' }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      // Load quote + items if they exist
+      const { data: existingQuote } = await supabase
+        .from('quotes')
+        .select('*')
+        .eq('lead_id', notifyLeadId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      let existingItems: Record<string, unknown>[] = []
+      if (existingQuote) {
+        const { data: items } = await supabase
+          .from('quote_items')
+          .select('*')
+          .eq('quote_id', existingQuote.id)
+          .order('sort_order')
+        existingItems = items || []
+      }
+
+      const notifyTotals = existingQuote
+        ? { subtotal: existingQuote.subtotal, vatTotal: existingQuote.vat_total, grandTotal: existingQuote.grand_total }
+        : null
+      const notifyRef = existingQuote?.reference_code || notifyLeadId
+
+      const fromEmail = getFromEmail()
+      const emailTasks: Array<{ task: string; ok: boolean; error?: string }> = []
+
+      // Firm notification
+      try {
+        const firmEmail = notifyFirm.reply_to_email || fromEmail
+        const result = await sendEmail({
+          to: firmEmail,
+          from: fromEmail,
+          fromName: 'ConveyQuote',
+          subject: `New Enquiry: ${existingLead.full_name} - ${existingLead.service_type}`,
+          html: notificationEmailHtml({
+            firmName: notifyFirm.name,
+            leadName: existingLead.full_name,
+            leadEmail: existingLead.email,
+            serviceType: existingLead.service_type,
+            propertyValue: existingLead.property_value,
+            status: existingLead.status || 'new',
+          }),
+        })
+        emailTasks.push({ task: 'firm_notification', ...result })
+      } catch (err) {
+        emailTasks.push({ task: 'firm_notification', ok: false, error: String(err) })
+      }
+
+      // Customer thank-you with PDF
+      try {
+        const baseUrl = getBaseUrl()
+        const instructionLink =
+          existingLead.status !== 'review' && notifyTotals
+            ? `${baseUrl}/quote/${notifyFirm.slug}/instruct?ref=${notifyRef}`
+            : undefined
+
+        let attachments: EmailAttachment[] | undefined
+        if (notifyTotals && existingItems.length > 0) {
+          try {
+            const pdfBase64 = await generateQuotePdfBase64({
+              firmName: notifyFirm.name,
+              leadName: existingLead.full_name,
+              leadEmail: existingLead.email,
+              serviceType: existingLead.service_type,
+              referenceCode: existingQuote?.reference_code || undefined,
+              items: existingItems as { description: string; amount: number; is_vatable?: boolean }[],
+              subtotal: Number(notifyTotals.subtotal || 0),
+              vatTotal: Number(notifyTotals.vatTotal || 0),
+              grandTotal: Number(notifyTotals.grandTotal || 0),
+            })
+            attachments = [{ filename: `quote-${notifyRef}.pdf`, content: pdfBase64 }]
+          } catch (pdfErr) {
+            console.error('PDF generation failed:', pdfErr)
+          }
+        }
+
+        const result = await sendEmail({
+          to: existingLead.email,
+          from: fromEmail,
+          fromName: notifyFirm.sender_display_name || notifyFirm.name,
+          subject: `Thank you — your quote from ${notifyFirm.name}`,
+          html: customerThankYouHtml({
+            firmName: notifyFirm.name,
+            leadName: existingLead.full_name,
+            serviceType: existingLead.service_type,
+            grandTotal: notifyTotals?.grandTotal,
+            referenceCode: existingQuote?.reference_code || undefined,
+            instructionLink,
+            hasPdf: !!attachments,
+          }),
+          attachments,
+        })
+        emailTasks.push({ task: 'customer_thank_you', ...result })
+
+        if (existingQuote && result.ok) {
+          await supabase
+            .from('quotes')
+            .update({ status: 'sent', sent_at: new Date().toISOString() })
+            .eq('id', existingQuote.id)
+        }
+      } catch (err) {
+        emailTasks.push({ task: 'customer_thank_you', ok: false, error: String(err) })
+      }
+
+      return new Response(
+        JSON.stringify({ ok: true, mode: 'notify', leadId: notifyLeadId, emailTasks }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // ── Full mode: create lead + quote + send emails (legacy/direct call) ──
     if (!lead?.firm_id || !lead?.email || !lead?.full_name) {
       return new Response(JSON.stringify({ error: 'Missing required lead fields' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
 
     // Verify firm is active and public
     const { data: firm, error: firmError } = await supabase
