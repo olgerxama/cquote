@@ -123,8 +123,6 @@ function getBaseUrl(): string {
 }
 
 // ─── PDF generation ──────────────────────────────────────────────────────
-// Builds a one-page A4 quote PDF using pdf-lib (pure JS, runs in Deno edge
-// runtime). Returns base64 so it can be attached straight to an email.
 async function generateQuotePdfBase64(p: {
   firmName: string
   leadName: string
@@ -137,82 +135,99 @@ async function generateQuotePdfBase64(p: {
   grandTotal: number
 }): Promise<string> {
   const pdf = await PDFDocument.create()
-  const page = pdf.addPage([595, 842]) // A4 portrait, points
+  const page = pdf.addPage([595, 842])
   const { width } = page.getSize()
   const font = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
   const navy = rgb(0.118, 0.227, 0.373)
-  const grey = rgb(0.4, 0.4, 0.4)
-  const line = rgb(0.85, 0.85, 0.85)
+  const black = rgb(0.1, 0.1, 0.1)
+  const grey = rgb(0.45, 0.45, 0.45)
+  const lightGrey = rgb(0.92, 0.92, 0.92)
+  const white = rgb(1, 1, 1)
+  const lm = 50 // left margin
+  const rm = width - 50 // right margin
+  const col2 = rm - 80 // amount column x
+  const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 
-  let y = 800
-  page.drawText(p.firmName, { x: 40, y, font: bold, size: 18, color: navy })
-  y -= 28
-  page.drawText('Conveyancing Quote Estimate', { x: 40, y, font, size: 12, color: grey })
-  y -= 22
+  // ── Header band ──
+  page.drawRectangle({ x: 0, y: 780, width, height: 62, color: navy })
+  page.drawText(p.firmName, { x: lm, y: 802, font: bold, size: 20, color: white })
+  page.drawText('QUOTE ESTIMATE', { x: rm - bold.widthOfTextAtSize('QUOTE ESTIMATE', 11), y: 805, font: bold, size: 11, color: rgb(0.7, 0.8, 0.9) })
   if (p.referenceCode) {
-    page.drawText(`Reference: ${p.referenceCode}`, { x: 40, y, font, size: 10, color: grey })
-    y -= 14
+    page.drawText(p.referenceCode, { x: rm - font.widthOfTextAtSize(p.referenceCode, 9), y: 791, font, size: 9, color: rgb(0.7, 0.8, 0.9) })
   }
-  page.drawText(`Date: ${new Date().toLocaleDateString('en-GB')}`, {
-    x: 40, y, font, size: 10, color: grey,
-  })
-  y -= 24
 
-  // Customer block
-  page.drawText('Prepared for:', { x: 40, y, font: bold, size: 11, color: navy })
-  y -= 14
-  page.drawText(p.leadName, { x: 40, y, font, size: 11 })
-  y -= 14
-  page.drawText(p.leadEmail, { x: 40, y, font, size: 10, color: grey })
-  y -= 14
-  page.drawText(`Service: ${p.serviceType.replace('_', ' & ')}`, {
-    x: 40, y, font, size: 10, color: grey,
-  })
-  y -= 24
+  let y = 755
 
-  // Items header
-  page.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, color: line, thickness: 1 })
+  // ── Two-column info block ──
+  page.drawText('PREPARED FOR', { x: lm, y, font: bold, size: 8, color: grey })
+  page.drawText('DETAILS', { x: 320, y, font: bold, size: 8, color: grey })
   y -= 16
-  page.drawText('Description', { x: 40, y, font: bold, size: 10, color: navy })
-  page.drawText('VAT', { x: 380, y, font: bold, size: 10, color: navy })
-  page.drawText('Amount', { x: 480, y, font: bold, size: 10, color: navy })
-  y -= 8
-  page.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, color: line, thickness: 1 })
+  page.drawText(p.leadName, { x: lm, y, font: bold, size: 11, color: black })
+  page.drawText(`Date: ${dateStr}`, { x: 320, y, font, size: 10, color: black })
   y -= 14
+  page.drawText(p.leadEmail, { x: lm, y, font, size: 10, color: grey })
+  const svcLabel = p.serviceType.replace(/_/g, ' & ').replace(/\b\w/g, c => c.toUpperCase())
+  page.drawText(`Service: ${svcLabel}`, { x: 320, y, font, size: 10, color: black })
+  y -= 30
 
+  // ── Table header ──
+  page.drawRectangle({ x: lm, y: y - 2, width: rm - lm, height: 20, color: navy })
+  page.drawText('Description', { x: lm + 10, y: y + 2, font: bold, size: 9, color: white })
+  page.drawText('VAT', { x: col2 - 50, y: y + 2, font: bold, size: 9, color: white })
+  page.drawText('Amount', { x: col2, y: y + 2, font: bold, size: 9, color: white })
+  y -= 22
+
+  // ── Line items ──
+  let rowIndex = 0
   for (const item of p.items) {
-    if (y < 120) break // safety
-    const desc = String(item.description || 'Item').slice(0, 60)
+    if (y < 140) break
+    const desc = String(item.description || 'Item').slice(0, 55)
     const amt = Number(item.amount || 0)
-    page.drawText(desc, { x: 40, y, font, size: 10 })
-    page.drawText(item.is_vatable === false ? 'No' : 'Yes', { x: 380, y, font, size: 10 })
-    page.drawText(`£${amt.toFixed(2)}`, { x: 480, y, font, size: 10 })
-    y -= 14
+    if (rowIndex % 2 === 0) {
+      page.drawRectangle({ x: lm, y: y - 4, width: rm - lm, height: 18, color: rgb(0.97, 0.97, 0.97) })
+    }
+    page.drawText(desc, { x: lm + 10, y, font, size: 9, color: black })
+    page.drawText(item.is_vatable === false ? 'No' : 'Yes', { x: col2 - 50, y, font, size: 9, color: grey })
+    const amtStr = `£${amt.toFixed(2)}`
+    page.drawText(amtStr, { x: col2 + (80 - font.widthOfTextAtSize(amtStr, 9)), y, font, size: 9, color: black })
+    y -= 18
+    rowIndex++
   }
 
   y -= 6
-  page.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, color: line, thickness: 1 })
-  y -= 16
+  page.drawLine({ start: { x: lm, y }, end: { x: rm, y }, color: lightGrey, thickness: 1 })
+  y -= 18
 
-  // Totals
-  page.drawText('Subtotal', { x: 380, y, font, size: 10, color: grey })
-  page.drawText(`£${p.subtotal.toFixed(2)}`, { x: 480, y, font, size: 10 })
-  y -= 14
-  page.drawText('VAT', { x: 380, y, font, size: 10, color: grey })
-  page.drawText(`£${p.vatTotal.toFixed(2)}`, { x: 480, y, font, size: 10 })
-  y -= 16
-  page.drawText('Total (inc VAT)', { x: 380, y, font: bold, size: 12, color: navy })
-  page.drawText(`£${p.grandTotal.toFixed(2)}`, { x: 480, y, font: bold, size: 12, color: navy })
+  // ── Totals ──
+  const drawTotalRow = (label: string, value: string, isBold = false, size = 10) => {
+    const f = isBold ? bold : font
+    const c = isBold ? navy : grey
+    page.drawText(label, { x: col2 - 100, y, font: f, size, color: c })
+    const valW = f.widthOfTextAtSize(value, size)
+    page.drawText(value, { x: rm - 10 - valW, y, font: f, size, color: isBold ? navy : black })
+    y -= (isBold ? 20 : 16)
+  }
 
-  // Footer
+  drawTotalRow('Subtotal', `£${p.subtotal.toFixed(2)}`)
+  drawTotalRow('VAT (20%)', `£${p.vatTotal.toFixed(2)}`)
+  page.drawLine({ start: { x: col2 - 100, y: y + 6 }, end: { x: rm - 10, y: y + 6 }, color: navy, thickness: 1.5 })
+  y -= 4
+  drawTotalRow('TOTAL (inc. VAT)', `£${p.grandTotal.toFixed(2)}`, true, 13)
+
+  // ── Footer ──
+  const footerY = 50
+  page.drawLine({ start: { x: lm, y: footerY + 16 }, end: { x: rm, y: footerY + 16 }, color: lightGrey, thickness: 0.5 })
   page.drawText(
     'This is an estimate only and may be subject to change. Please contact us for a full breakdown.',
-    { x: 40, y: 60, font, size: 8, color: grey },
+    { x: lm, y: footerY, font, size: 7.5, color: grey },
+  )
+  page.drawText(
+    `Generated by ConveyQuote on ${dateStr}`,
+    { x: lm, y: footerY - 12, font, size: 7, color: rgb(0.7, 0.7, 0.7) },
   )
 
   const bytes = await pdf.save()
-  // Encode to base64
   let binary = ''
   const chunk = 0x8000
   for (let i = 0; i < bytes.length; i += chunk) {
@@ -231,28 +246,43 @@ function customerThankYouHtml(p: {
   instructionLink?: string
   hasPdf: boolean
 }): string {
-  const total = p.grandTotal != null
-    ? `<p style="font-size:24px;font-weight:bold;color:#1e3a5f;margin:16px 0;">Estimated Total: &pound;${p.grandTotal.toFixed(2)} (inc. VAT)</p>`
+  const svcLabel = p.serviceType.replace(/_/g, ' &amp; ')
+  const refBlock = p.referenceCode
+    ? `<tr><td style="padding:6px 0;color:#888;font-size:13px;">Reference</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#1e3a5f;">${p.referenceCode}</td></tr>`
     : ''
-  const ref = p.referenceCode ? `<p><strong>Reference:</strong> ${p.referenceCode}</p>` : ''
-  const cta = p.instructionLink
-    ? `<p style="margin-top:24px;">Ready to proceed? Click below to instruct us:</p>
-<p><a href="${p.instructionLink}" style="display:inline-block;background:#1e3a5f;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:600;">Instruct Now</a></p>`
+  const totalBlock = p.grandTotal != null
+    ? `<tr><td style="padding:6px 0;color:#888;font-size:13px;">Service</td><td style="padding:6px 0;text-align:right;color:#333;">${svcLabel}</td></tr>
+       ${refBlock}
+       <tr><td colspan="2" style="padding:0;"><div style="border-top:2px solid #1e3a5f;margin:12px 0;"></div></td></tr>
+       <tr><td style="padding:6px 0;font-size:18px;font-weight:700;color:#1e3a5f;">Estimated Total</td><td style="padding:6px 0;text-align:right;font-size:22px;font-weight:700;color:#1e3a5f;">&pound;${p.grandTotal.toFixed(2)}</td></tr>
+       <tr><td colspan="2" style="padding:0 0 4px;color:#999;font-size:11px;">Including VAT</td></tr>`
     : ''
   const pdfNote = p.hasPdf
-    ? '<p style="color:#666;font-size:13px;">Your detailed quote estimate is attached to this email as a PDF.</p>'
+    ? `<div style="background:#f0f4f8;border-radius:8px;padding:14px 18px;margin:20px 0;font-size:13px;color:#555;">
+        <strong style="color:#1e3a5f;">PDF Attached</strong> — Your detailed quote estimate is attached to this email.
+       </div>`
     : ''
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
-<h2 style="color:#1e3a5f;margin-bottom:8px;">${p.firmName}</h2>
-<p>Dear ${p.leadName},</p>
-<p>Thank you for reaching out about your ${p.serviceType.replace('_', ' & ')} matter.
-We've received your enquiry and a member of our team will be in touch shortly.</p>
-${ref}
-${total}
-${pdfNote}
-${cta}
-<p style="color:#666;font-size:12px;margin-top:30px;">This is an estimate only and may be subject to change. Please contact us for a full breakdown.</p>
+  const cta = p.instructionLink
+    ? `<div style="text-align:center;margin:28px 0;">
+        <a href="${p.instructionLink}" style="display:inline-block;background:#1e3a5f;color:#ffffff;padding:14px 36px;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">Instruct Us to Proceed</a>
+       </div>`
+    : ''
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;background:#f5f5f5;color:#333;">
+<div style="background:#1e3a5f;padding:28px 32px;">
+  <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">${p.firmName}</h1>
+</div>
+<div style="background:#ffffff;padding:32px;border:1px solid #e5e5e5;border-top:none;">
+  <p style="margin:0 0 6px;font-size:15px;">Dear ${p.leadName},</p>
+  <p style="margin:0 0 24px;color:#555;font-size:14px;line-height:1.6;">Thank you for your ${svcLabel.toLowerCase()} enquiry. We have received your details and a member of our team will be in touch shortly to discuss the next steps.</p>
+  ${totalBlock ? `<table style="width:100%;border-collapse:collapse;">${totalBlock}</table>` : ''}
+  ${pdfNote}
+  ${cta}
+</div>
+<div style="padding:20px 32px;text-align:center;font-size:11px;color:#999;">
+  <p style="margin:0 0 4px;">This is an estimate only and may be subject to change.</p>
+  <p style="margin:0;">Powered by ConveyQuote</p>
+</div>
 </body></html>`
 }
 
@@ -264,17 +294,27 @@ function notificationEmailHtml(p: {
   propertyValue: number
   status: string
 }): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
-<h2 style="color:#1e3a5f;">New Enquiry - ${p.firmName}</h2>
-<table style="width:100%;border-collapse:collapse;">
-<tr><td style="padding:8px;border-bottom:1px solid #eee;font-weight:bold;">Name</td><td style="padding:8px;border-bottom:1px solid #eee;">${p.leadName}</td></tr>
-<tr><td style="padding:8px;border-bottom:1px solid #eee;font-weight:bold;">Email</td><td style="padding:8px;border-bottom:1px solid #eee;">${p.leadEmail}</td></tr>
-<tr><td style="padding:8px;border-bottom:1px solid #eee;font-weight:bold;">Service</td><td style="padding:8px;border-bottom:1px solid #eee;">${p.serviceType}</td></tr>
-<tr><td style="padding:8px;border-bottom:1px solid #eee;font-weight:bold;">Property Value</td><td style="padding:8px;border-bottom:1px solid #eee;">&pound;${p.propertyValue.toLocaleString()}</td></tr>
-<tr><td style="padding:8px;font-weight:bold;">Status</td><td style="padding:8px;">${p.status}</td></tr>
-</table>
-<p style="margin-top:20px;">Log in to your ConveyQuote dashboard to view and manage this lead.</p>
+  const svcLabel = p.serviceType.replace(/_/g, ' & ')
+  const statusColor = p.status === 'review' ? '#d97706' : '#059669'
+  const statusLabel = p.status === 'review' ? 'Manual Review' : 'New Lead'
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;background:#f5f5f5;color:#333;">
+<div style="background:#1e3a5f;padding:24px 32px;">
+  <h1 style="margin:0;color:#ffffff;font-size:18px;font-weight:700;">New Enquiry Received</h1>
+  <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px;">${p.firmName}</p>
+</div>
+<div style="background:#ffffff;padding:28px 32px;border:1px solid #e5e5e5;border-top:none;">
+  <div style="display:inline-block;background:${statusColor};color:white;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:20px;">${statusLabel}</div>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;width:120px;">Name</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-weight:600;">${p.leadName}</td></tr>
+    <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;">Email</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;"><a href="mailto:${p.leadEmail}" style="color:#1e3a5f;">${p.leadEmail}</a></td></tr>
+    <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;">Service</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;">${svcLabel}</td></tr>
+    <tr><td style="padding:10px 0;color:#888;font-size:13px;">Property Value</td><td style="padding:10px 0;font-weight:600;">&pound;${Number(p.propertyValue).toLocaleString()}</td></tr>
+  </table>
+</div>
+<div style="padding:20px 32px;text-align:center;">
+  <p style="margin:0;font-size:12px;color:#999;">Log in to your ConveyQuote dashboard to manage this lead.</p>
+</div>
 </body></html>`
 }
 
@@ -399,7 +439,7 @@ Deno.serve(async (req) => {
 
         const result = await sendEmail({
           to: existingLead.email,
-          from: fromEmail,
+          from: notifyFirm.reply_to_email || fromEmail,
           fromName: notifyFirm.sender_display_name || notifyFirm.name,
           subject: `Thank you — your quote from ${notifyFirm.name}`,
           html: customerThankYouHtml({
@@ -577,7 +617,7 @@ Deno.serve(async (req) => {
 
       const result = await sendEmail({
         to: lead.email,
-        from: fromEmail,
+        from: firm.reply_to_email || fromEmail,
         fromName: firm.sender_display_name || firm.name,
         subject: `Thank you — your quote from ${firm.name}`,
         html: customerThankYouHtml({

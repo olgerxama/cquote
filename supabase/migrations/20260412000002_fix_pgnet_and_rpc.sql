@@ -1,19 +1,19 @@
--- Fix: replace pg_net (unreliable async background worker) with the
--- synchronous http extension for email notification. Wrapped in an
--- exception handler so lead creation always succeeds.
+-- Fix: correct http extension call syntax and replace pg_net.
+-- The previous migration used extensions.http_header() as a function call,
+-- but http_header is a TYPE — needs ROW()::type casting.
 
 -- =========================================================================
--- 1. Remove pg_net (causes security warnings, background worker unreliable)
+-- 1. Remove pg_net (unreliable, causes security warnings)
 -- =========================================================================
 DROP EXTENSION IF EXISTS pg_net;
 
 -- =========================================================================
--- 2. Enable the http extension (synchronous HTTP from SQL — reliable)
+-- 2. Ensure http extension exists
 -- =========================================================================
 CREATE EXTENSION IF NOT EXISTS http WITH SCHEMA extensions;
 
 -- =========================================================================
--- 3. Recreate the RPC function using the http extension.
+-- 3. Recreate RPC with correct http extension syntax
 -- =========================================================================
 CREATE OR REPLACE FUNCTION public.create_public_lead(
   p_lead jsonb,
@@ -23,7 +23,7 @@ CREATE OR REPLACE FUNCTION public.create_public_lead(
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_lead_id uuid;
@@ -32,18 +32,12 @@ DECLARE
   v_reference_code text;
   v_instruction_ref text;
   v_anon_key text := 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaGd1aHZhcGpqd2N3dHBoY3RkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4Njk4MjQsImV4cCI6MjA5MTQ0NTgyNH0.JMSWUyfBsd6IJM-GDicM-zKfZwemg3ogVwWjppUAi8Y';
-  v_response extensions.http_response;
 BEGIN
-  -- Validate firm is active and has public form enabled
-  SELECT * INTO v_firm
-  FROM firms
+  -- Validate firm
+  SELECT * INTO v_firm FROM firms
   WHERE id = (p_lead->>'firm_id')::uuid
-    AND is_active = true
-    AND public_quote_form_enabled = true;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Firm not available';
-  END IF;
+    AND is_active = true AND public_quote_form_enabled = true;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Firm not available'; END IF;
 
   -- Insert lead
   INSERT INTO leads (
@@ -51,14 +45,10 @@ BEGIN
     service_type, property_value, tenure, mortgage_required,
     first_time_buyer, estimated_total, status, answers, discount_code_id
   ) VALUES (
-    (p_lead->>'firm_id')::uuid,
-    p_lead->>'full_name',
-    p_lead->>'first_name',
-    p_lead->>'surname',
-    p_lead->>'email',
-    p_lead->>'phone',
-    p_lead->>'service_type',
-    (p_lead->>'property_value')::numeric,
+    (p_lead->>'firm_id')::uuid, p_lead->>'full_name',
+    p_lead->>'first_name', p_lead->>'surname',
+    p_lead->>'email', p_lead->>'phone',
+    p_lead->>'service_type', (p_lead->>'property_value')::numeric,
     COALESCE(p_lead->>'tenure', 'freehold'),
     COALESCE((p_lead->>'mortgage_required')::boolean, false),
     COALESCE((p_lead->>'first_time_buyer')::boolean, false),
@@ -66,42 +56,28 @@ BEGIN
     COALESCE(p_lead->>'status', 'new'),
     COALESCE(p_lead->'answers', '{}'::jsonb),
     p_discount_code_id
-  )
-  RETURNING id INTO v_lead_id;
+  ) RETURNING id INTO v_lead_id;
 
-  -- Increment discount use count
   IF p_discount_code_id IS NOT NULL THEN
     PERFORM increment_discount_use_count(p_discount_code_id);
   END IF;
 
-  -- Create quote + items if totals provided and not manual review
+  -- Create quote + items
   IF p_totals IS NOT NULL AND COALESCE(p_lead->>'status', 'new') != 'review' THEN
-    INSERT INTO quotes (
-      lead_id, firm_id, status,
-      subtotal, vat_total, grand_total, discount_total
-    ) VALUES (
-      v_lead_id,
-      (p_lead->>'firm_id')::uuid,
-      'draft',
+    INSERT INTO quotes (lead_id, firm_id, status, subtotal, vat_total, grand_total, discount_total)
+    VALUES (
+      v_lead_id, (p_lead->>'firm_id')::uuid, 'draft',
       COALESCE((p_totals->>'subtotal')::numeric, 0),
       COALESCE((p_totals->>'vatTotal')::numeric, 0),
-      COALESCE((p_totals->>'grandTotal')::numeric, 0),
-      0
-    )
-    RETURNING id INTO v_quote_id;
+      COALESCE((p_totals->>'grandTotal')::numeric, 0), 0
+    ) RETURNING id INTO v_quote_id;
 
-    -- Generate reference code from quote ID
     v_reference_code := 'CQ-' || upper(left(v_quote_id::text, 8));
     UPDATE quotes SET reference_code = v_reference_code WHERE id = v_quote_id;
 
-    -- Insert quote line items
     IF p_quote_items IS NOT NULL AND jsonb_array_length(p_quote_items) > 0 THEN
-      INSERT INTO quote_items (
-        quote_id, description, amount, is_vatable,
-        item_type, sort_order, source_type
-      )
-      SELECT
-        v_quote_id,
+      INSERT INTO quote_items (quote_id, description, amount, is_vatable, item_type, sort_order, source_type)
+      SELECT v_quote_id,
         COALESCE(item->>'description', 'Item'),
         COALESCE((item->>'amount')::numeric, 0),
         COALESCE((item->>'is_vatable')::boolean, true),
@@ -114,41 +90,26 @@ BEGIN
 
   v_instruction_ref := COALESCE(v_reference_code, v_lead_id::text);
 
-  -- Notify the edge function to send emails (firm + customer + PDF).
-  -- Uses the synchronous http extension. Wrapped in exception handler
-  -- so lead creation ALWAYS succeeds even if email notification fails.
+  -- Fire email notification via synchronous http extension.
+  -- search_path includes extensions so http/http_header resolve unqualified.
   BEGIN
-    SELECT *
-    INTO v_response
-    FROM extensions.http((
+    PERFORM http((
       'POST',
       'https://ohhguhvapjjwcwtphctd.supabase.co/functions/v1/create-public-lead',
       ARRAY[
-        extensions.http_header('apikey', v_anon_key),
-        extensions.http_header('Authorization', 'Bearer ' || v_anon_key)
+        ROW('apikey', v_anon_key)::http_header,
+        ROW('Authorization', 'Bearer ' || v_anon_key)::http_header,
+        ROW('Content-Type', 'application/json')::http_header
       ],
       'application/json',
-      jsonb_build_object(
-        'notifyLeadId', v_lead_id,
-        'firmId', (p_lead->>'firm_id')::uuid
-      )::text
-    )::extensions.http_request);
-
-    IF v_response.status < 200 OR v_response.status >= 300 THEN
-      RAISE WARNING 'Email notification returned HTTP %: %', v_response.status, v_response.content;
-    END IF;
+      jsonb_build_object('notifyLeadId', v_lead_id, 'firmId', (p_lead->>'firm_id')::uuid)::text
+    )::http_request);
   EXCEPTION WHEN OTHERS THEN
-    -- Never let email failure prevent lead creation
-    RAISE WARNING 'Email notification failed: %', SQLERRM;
+    RAISE WARNING 'Email notification failed (will not block lead creation): %', SQLERRM;
   END;
 
-  RETURN jsonb_build_object(
-    'id', v_lead_id,
-    'quoteId', v_quote_id,
-    'instructionRef', v_instruction_ref
-  );
+  RETURN jsonb_build_object('id', v_lead_id, 'quoteId', v_quote_id, 'instructionRef', v_instruction_ref);
 END;
 $$;
 
--- Ensure permissions are still in place
 GRANT EXECUTE ON FUNCTION public.create_public_lead(jsonb, uuid, jsonb, jsonb) TO anon, authenticated;
