@@ -662,121 +662,48 @@ function QuoteSection({
   }
 
   const totals = items.length > 0 ? recalculateTotals(items) : null
+  const referenceCode =
+    (existingQuote as { reference_code?: string } | null)?.reference_code ||
+    (existingQuote ? `CQ-${existingQuote.id.substring(0, 8).toUpperCase()}` : null)
 
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase">Quote</h3>
-        {existingQuote && (
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-              existingQuote.status === 'sent' ? 'bg-green-100 text-green-700' :
-              existingQuote.status === 'draft' ? 'bg-gray-100 text-gray-700' :
-              'bg-blue-100 text-blue-700'
-            )}>
-              {existingQuote.status}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Created {formatDate(existingQuote.created_at)}
-            </span>
-          </div>
-        )}
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Quote / Invoice
+        </h3>
+        <div className="flex items-center gap-2">
+          {existingQuote && (
+            <>
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  existingQuote.status === 'sent'
+                    ? 'bg-green-100 text-green-700'
+                    : existingQuote.status === 'draft'
+                      ? 'bg-gray-100 text-gray-700'
+                      : 'bg-blue-100 text-blue-700',
+                )}
+              >
+                {existingQuote.status}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Created {formatDate(existingQuote.created_at)}
+              </span>
+            </>
+          )}
+        </div>
       </div>
 
-      {items.length > 0 ? (
-        <div className="space-y-3">
-          <div className="rounded-lg border border-border divide-y divide-border">
-            {items.map((item, idx) => (
-              <div key={idx} className="flex items-center gap-3 px-4 py-2.5">
-                <input
-                  type="text"
-                  value={item.description}
-                  onChange={(e) => updateItem(idx, 'description', e.target.value)}
-                  className="flex-1 text-sm bg-transparent border-b border-dashed border-border focus:outline-none focus:border-primary"
-                />
-                <input
-                  type="number"
-                  value={item.amount}
-                  onChange={(e) => updateItem(idx, 'amount', parseFloat(e.target.value) || 0)}
-                  className="w-24 text-sm text-right bg-transparent border-b border-dashed border-border focus:outline-none focus:border-primary"
-                />
-                <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={item.is_vatable}
-                    onChange={(e) => updateItem(idx, 'is_vatable', e.target.checked)}
-                    className="rounded"
-                  />
-                  VAT
-                </label>
-                <button onClick={() => removeItem(idx)} className="p-1 text-muted-foreground hover:text-destructive">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-10 text-center bg-muted/20">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <Zap className="h-5 w-5 text-primary" />
           </div>
-
-          <button
-            onClick={addItem}
-            className="text-sm text-primary hover:underline flex items-center gap-1"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add line item
-          </button>
-
-          {/* Totals */}
-          {totals && (
-            <div className="rounded-lg bg-muted/50 p-4 space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
-              </div>
-              {totals.discountTotal > 0 && (
-                <div className="flex justify-between text-red-600">
-                  <span>Discount</span>
-                  <span>-{formatCurrency(totals.discountTotal)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">VAT</span>
-                <span className="font-medium">{formatCurrency(totals.vatAmount)}</span>
-              </div>
-              <div className="flex justify-between text-base font-semibold border-t border-border pt-1 mt-1">
-                <span>Grand Total</span>
-                <span>{formatCurrency(totals.grandTotal)}</span>
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => saveMut.mutate()}
-              disabled={saveMut.isPending || !dirty}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              <Save className="h-4 w-4" />
-              {saveMut.isPending ? 'Saving…' : dirty ? 'Save Quote' : 'Saved'}
-            </button>
-            <button
-              onClick={handleGenerate}
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-            >
-              <Zap className="h-4 w-4" />
-              Regenerate
-            </button>
-            <button
-              onClick={handleSendEmail}
-              disabled={sending || saveMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50 transition-colors"
-            >
-              <Send className="h-4 w-4" />
-              {sending ? 'Sending…' : 'Send Quote Email'}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-dashed border-border p-8 text-center">
-          <p className="text-sm text-muted-foreground mb-3">No quote generated yet.</p>
+          <p className="text-sm font-medium text-foreground mb-1">No quote yet</p>
+          <p className="text-xs text-muted-foreground mb-4">
+            Generate a quote from the customer's answers and your firm's pricing.
+          </p>
           <button
             onClick={handleGenerate}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -784,6 +711,163 @@ function QuoteSection({
             <Zap className="h-4 w-4" />
             Generate Quote
           </button>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+          {/* Invoice header */}
+          <div className="bg-gradient-to-br from-primary/5 to-transparent px-6 py-5 border-b border-border">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Quote Estimate
+                </p>
+                <p className="text-lg font-bold text-foreground mt-0.5">
+                  {referenceCode || 'New quote'}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Issued</p>
+                <p className="text-sm font-medium text-foreground mt-0.5">
+                  {existingQuote?.created_at ? formatDate(existingQuote.created_at) : 'Today'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                  Billed To
+                </p>
+                <p className="text-sm font-medium text-foreground">{lead.full_name}</p>
+                <p className="text-xs text-muted-foreground">{lead.email}</p>
+                {lead.phone && <p className="text-xs text-muted-foreground">{lead.phone}</p>}
+              </div>
+              <div className="sm:text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                  Service
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {ServiceLabels[lead.service_type as ServiceType] || lead.service_type}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Property value: {formatCurrency(lead.property_value || 0)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Line items table */}
+          <div className="px-6 pt-5">
+            <div className="grid grid-cols-[1fr_70px_110px_28px] items-center gap-3 px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border">
+              <div>Description</div>
+              <div className="text-center">VAT</div>
+              <div className="text-right">Amount</div>
+              <div></div>
+            </div>
+            <div className="divide-y divide-border">
+              {items.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-[1fr_70px_110px_28px] items-center gap-3 px-3 py-2.5 hover:bg-muted/30 transition-colors group"
+                >
+                  <input
+                    type="text"
+                    value={item.description}
+                    onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                    className="text-sm bg-transparent border-0 border-b border-transparent group-hover:border-dashed group-hover:border-border focus:outline-none focus:border-primary focus:border-solid px-0 py-0.5"
+                  />
+                  <label className="flex items-center justify-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={item.is_vatable}
+                      onChange={(e) => updateItem(idx, 'is_vatable', e.target.checked)}
+                      className="h-4 w-4 rounded border-border"
+                    />
+                  </label>
+                  <div className="flex items-center justify-end gap-1">
+                    <span className="text-sm text-muted-foreground">£</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={item.amount}
+                      onChange={(e) => updateItem(idx, 'amount', parseFloat(e.target.value) || 0)}
+                      className="w-20 text-sm text-right bg-transparent border-0 border-b border-transparent group-hover:border-dashed group-hover:border-border focus:outline-none focus:border-primary focus:border-solid px-0 py-0.5"
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeItem(idx)}
+                    className="p-1 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Remove line"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={addItem}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add line item
+            </button>
+          </div>
+
+          {/* Totals */}
+          {totals && (
+            <div className="px-6 pb-5 mt-3">
+              <div className="ml-auto max-w-xs space-y-1.5 text-sm">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span className="text-foreground tabular-nums">{formatCurrency(totals.subtotal)}</span>
+                </div>
+                {totals.discountTotal > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Discount</span>
+                    <span className="tabular-nums">-{formatCurrency(totals.discountTotal)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-muted-foreground">
+                  <span>VAT</span>
+                  <span className="text-foreground tabular-nums">{formatCurrency(totals.vatAmount)}</span>
+                </div>
+                <div className="flex justify-between border-t border-border pt-2 mt-2 text-base font-bold text-foreground">
+                  <span>Total (inc VAT)</span>
+                  <span className="tabular-nums">{formatCurrency(totals.grandTotal)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action bar */}
+          <div className="border-t border-border bg-muted/30 px-6 py-4 flex flex-wrap items-center gap-2 justify-between">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => saveMut.mutate()}
+                disabled={saveMut.isPending || !dirty}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                <Save className="h-4 w-4" />
+                {saveMut.isPending ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
+              </button>
+              <button
+                onClick={handleGenerate}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3.5 py-2 text-sm font-medium hover:bg-muted transition-colors"
+                title="Recalculate from firm pricing"
+              >
+                <Zap className="h-4 w-4" />
+                Regenerate
+              </button>
+            </div>
+            <button
+              onClick={handleSendEmail}
+              disabled={sending || saveMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-colors"
+            >
+              <Send className="h-4 w-4" />
+              {sending ? 'Sending…' : 'Send to customer'}
+            </button>
+          </div>
         </div>
       )}
     </section>

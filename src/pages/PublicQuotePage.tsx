@@ -250,31 +250,35 @@ export default function PublicQuotePage() {
       )
       const { data, error } = await Promise.race([invokePromise, timeoutPromise])
 
-      if (error) throw error
+      if (error) {
+        // The Supabase functions client wraps non-2xx responses in a
+        // FunctionsHttpError. Try to extract the body so we surface the
+        // real cause (e.g. "Firm not available", SMTP failure, etc).
+        let detail = error.message || 'Submission failed'
+        // deno-lint-ignore no-explicit-any
+        const anyErr = error as any
+        if (anyErr?.context?.json) {
+          try {
+            const body = await anyErr.context.json()
+            detail = body?.detail || body?.error || detail
+          } catch (_) { /* ignore */ }
+        }
+        throw new Error(detail)
+      }
+
+      if (data?.error) {
+        throw new Error(data.detail || data.error)
+      }
 
       setQuoteResult(result)
       setLeadRef(data?.instructionRef || data?.id || null)
       setSubmitted(true)
-    } catch (err) {
-      // Fallback: insert lead directly if edge function unavailable. The
-      // customer won't get an automatic email in this path (the edge function
-      // is what triggers it) but at least the lead is captured.
-      console.error('create-public-lead invoke failed, falling back to direct insert:', err)
-      const { data: lead, error: insertError } = await supabase
-        .from('leads')
-        .insert(leadPayload)
-        .select('id')
-        .single()
-
-      if (insertError) {
-        toast.error('Failed to submit. Please try again.')
-        setSubmitting(false)
-        return
-      }
-
-      setQuoteResult(result)
-      setLeadRef(lead?.id || null)
-      setSubmitted(true)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('create-public-lead failed:', err)
+      toast.error(`Failed to submit: ${message}`)
+      setSubmitting(false)
+      return
     }
 
     setSubmitting(false)

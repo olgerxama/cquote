@@ -38,5 +38,18 @@ enable_confirmations = false
 [edge_runtime]
 enabled = true
 
+# Public-facing edge functions: callable anonymously by visitors of the
+# public quote form. JWT verification must be off so the function can be
+# invoked without a logged-in user.
+[functions.create-public-lead]
+verify_jwt = false
+
+[functions.submit-instruction]
+verify_jwt = false
+
+# Admin-only function: verifies the caller's auth header itself.
+[functions.send-quote-email]
+verify_jwt = true
+
 [analytics]
 enabled = false

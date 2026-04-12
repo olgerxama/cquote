@@ -90,7 +90,7 @@ function getFromEmail(): string {
   )
 }
 
-function instructionEmailHtml(p: {
+function instructionFirmEmailHtml(p: {
   firmName: string
   leadName: string
   leadEmail: string
@@ -106,9 +106,25 @@ function instructionEmailHtml(p: {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
 <h2 style="color:#1e3a5f;">Instruction Submitted - ${p.firmName}</h2>
-<p>${p.leadName} (${p.leadEmail}) has completed instruction for a ${p.serviceType.replace('_', ' & ')} matter.</p>
+<p><strong>${p.leadName}</strong> (${p.leadEmail}) has completed instruction for a ${p.serviceType.replace('_', ' & ')} matter.</p>
 <table style="width:100%;border-collapse:collapse;margin-top:16px;">${rows}</table>
 <p style="margin-top:20px;">Log in to ConveyQuote to view and action this instruction.</p>
+</body></html>`
+}
+
+function instructionCustomerEmailHtml(p: {
+  firmName: string
+  leadName: string
+  serviceType: string
+}): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
+<h2 style="color:#1e3a5f;margin-bottom:8px;">${p.firmName}</h2>
+<p>Dear ${p.leadName},</p>
+<p>Thank you for instructing us with your ${p.serviceType.replace('_', ' & ')} matter. We've received your instruction details and a member of our team will be in touch shortly to begin the next steps.</p>
+<p>You don't need to do anything further at this stage — we'll reach out by email or phone with your case number and what to expect next.</p>
+<p style="margin-top:20px;">Kind regards,<br/>The ${p.firmName} team</p>
+<p style="color:#666;font-size:12px;margin-top:30px;border-top:1px solid #eee;padding-top:12px;">If you did not submit this instruction, please contact us immediately so we can investigate.</p>
 </body></html>`
 }
 
@@ -186,17 +202,19 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Notify firm
+    // Notify firm AND confirm to customer
     const fromEmail = getFromEmail()
     const firmEmail = firm.reply_to_email || fromEmail
-    let emailResult: { ok: boolean; error?: string } = { ok: false, error: 'skipped' }
+    const emailTasks: Array<{ task: string; ok: boolean; error?: string }> = []
+
+    // Firm notification
     try {
-      emailResult = await sendEmail({
+      const result = await sendEmail({
         to: firmEmail,
         from: fromEmail,
         fromName: 'ConveyQuote',
         subject: `Instruction Submitted: ${lead.full_name} - ${lead.service_type}`,
-        html: instructionEmailHtml({
+        html: instructionFirmEmailHtml({
           firmName: firm.name,
           leadName: lead.full_name,
           leadEmail: lead.email,
@@ -204,12 +222,31 @@ Deno.serve(async (req) => {
           details,
         }),
       })
+      emailTasks.push({ task: 'firm_notification', ...result })
     } catch (err) {
-      emailResult = { ok: false, error: String(err) }
+      emailTasks.push({ task: 'firm_notification', ok: false, error: String(err) })
+    }
+
+    // Customer confirmation
+    try {
+      const result = await sendEmail({
+        to: lead.email,
+        from: fromEmail,
+        fromName: firm.sender_display_name || firm.name,
+        subject: `Instruction received — ${firm.name}`,
+        html: instructionCustomerEmailHtml({
+          firmName: firm.name,
+          leadName: lead.full_name,
+          serviceType: lead.service_type,
+        }),
+      })
+      emailTasks.push({ task: 'customer_confirmation', ...result })
+    } catch (err) {
+      emailTasks.push({ task: 'customer_confirmation', ok: false, error: String(err) })
     }
 
     return new Response(
-      JSON.stringify({ ok: true, leadId, email: emailResult }),
+      JSON.stringify({ ok: true, leadId, emailTasks }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (err) {
