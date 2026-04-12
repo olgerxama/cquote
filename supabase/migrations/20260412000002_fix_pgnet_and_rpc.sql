@@ -3,9 +3,11 @@
 -- the edge function.
 
 -- =========================================================================
--- 1. Move pg_net extension from public to extensions schema
+-- 1. Reinstall pg_net in the extensions schema (it does not support
+--    ALTER EXTENSION SET SCHEMA, so we drop and recreate it).
 -- =========================================================================
-ALTER EXTENSION pg_net SET SCHEMA extensions;
+DROP EXTENSION IF EXISTS pg_net;
+CREATE EXTENSION pg_net SCHEMA extensions;
 
 -- =========================================================================
 -- 2. Recreate the RPC function with the corrected pg_net headers.
