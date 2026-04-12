@@ -1,12 +1,8 @@
 -- Migration: Move public lead creation to an RPC function
 -- This eliminates CORS issues by using the REST API (PostgREST) instead of
--- edge functions for the critical path. Emails are triggered via pg_net
--- (server-to-server, no browser CORS involved).
-
--- =========================================================================
--- 1. Enable pg_net for async server-to-server HTTP calls
--- =========================================================================
-CREATE EXTENSION IF NOT EXISTS pg_net;
+-- edge functions for the critical path. Emails are triggered via the http
+-- extension (server-to-server, no browser CORS involved).
+-- NOTE: the actual RPC function is replaced in 20260412000002.
 
 -- =========================================================================
 -- 2. RPC function: create_public_lead

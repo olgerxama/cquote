@@ -1,18 +1,19 @@
--- Fix: move pg_net to extensions schema (security advisor) and add missing
--- apikey header to the pg_net call so email notifications actually reach
--- the edge function.
+-- Fix: replace pg_net (unreliable async background worker) with the
+-- synchronous http extension for email notification. Wrapped in an
+-- exception handler so lead creation always succeeds.
 
 -- =========================================================================
--- 1. Reinstall pg_net in the extensions schema (it does not support
---    ALTER EXTENSION SET SCHEMA, so we drop and recreate it).
+-- 1. Remove pg_net (causes security warnings, background worker unreliable)
 -- =========================================================================
 DROP EXTENSION IF EXISTS pg_net;
-CREATE EXTENSION pg_net SCHEMA extensions;
 
 -- =========================================================================
--- 2. Recreate the RPC function with the corrected pg_net headers.
---    The Supabase gateway requires an 'apikey' header on ALL edge-function
---    requests — without it the request is silently rejected.
+-- 2. Enable the http extension (synchronous HTTP from SQL — reliable)
+-- =========================================================================
+CREATE EXTENSION IF NOT EXISTS http WITH SCHEMA extensions;
+
+-- =========================================================================
+-- 3. Recreate the RPC function using the http extension.
 -- =========================================================================
 CREATE OR REPLACE FUNCTION public.create_public_lead(
   p_lead jsonb,
@@ -31,6 +32,7 @@ DECLARE
   v_reference_code text;
   v_instruction_ref text;
   v_anon_key text := 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaGd1aHZhcGpqd2N3dHBoY3RkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4Njk4MjQsImV4cCI6MjA5MTQ0NTgyNH0.JMSWUyfBsd6IJM-GDicM-zKfZwemg3ogVwWjppUAi8Y';
+  v_response extensions.http_response;
 BEGIN
   -- Validate firm is active and has public form enabled
   SELECT * INTO v_firm
@@ -112,22 +114,33 @@ BEGIN
 
   v_instruction_ref := COALESCE(v_reference_code, v_lead_id::text);
 
-  -- Fire async email notification via pg_net → edge function.
-  -- The apikey header is REQUIRED by the Supabase gateway for all
-  -- edge-function requests. Without it the request is rejected.
-  PERFORM net.http_post(
-    url := 'https://ohhguhvapjjwcwtphctd.supabase.co/functions/v1/create-public-lead',
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'apikey', v_anon_key,
-      'Authorization', 'Bearer ' || v_anon_key
-    ),
-    body := jsonb_build_object(
-      'notifyLeadId', v_lead_id,
-      'firmId', (p_lead->>'firm_id')::uuid
-    ),
-    timeout_milliseconds := 30000
-  );
+  -- Notify the edge function to send emails (firm + customer + PDF).
+  -- Uses the synchronous http extension. Wrapped in exception handler
+  -- so lead creation ALWAYS succeeds even if email notification fails.
+  BEGIN
+    SELECT *
+    INTO v_response
+    FROM extensions.http((
+      'POST',
+      'https://ohhguhvapjjwcwtphctd.supabase.co/functions/v1/create-public-lead',
+      ARRAY[
+        extensions.http_header('apikey', v_anon_key),
+        extensions.http_header('Authorization', 'Bearer ' || v_anon_key)
+      ],
+      'application/json',
+      jsonb_build_object(
+        'notifyLeadId', v_lead_id,
+        'firmId', (p_lead->>'firm_id')::uuid
+      )::text
+    )::extensions.http_request);
+
+    IF v_response.status < 200 OR v_response.status >= 300 THEN
+      RAISE WARNING 'Email notification returned HTTP %: %', v_response.status, v_response.content;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    -- Never let email failure prevent lead creation
+    RAISE WARNING 'Email notification failed: %', SQLERRM;
+  END;
 
   RETURN jsonb_build_object(
     'id', v_lead_id,
