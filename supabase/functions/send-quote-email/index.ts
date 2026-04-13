@@ -2,6 +2,7 @@
 // Admin-triggered: sends a quote/invoice email to the lead with an optional
 // PDF attachment, then marks the quote as sent.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +22,213 @@ interface EmailOptions {
   subject: string
   html: string
   attachments?: EmailAttachment[]
+}
+
+interface PdfQuoteItem {
+  description: string
+  amount: number
+}
+
+function formatCurrency(amount: number): string {
+  return `£${Number(amount || 0).toFixed(2)}`
+}
+
+function formatServiceLabel(serviceType: string): string {
+  return serviceType.replace(/_/g, ' & ').replace(/\b\w/g, (ch) => ch.toUpperCase())
+}
+
+async function generateQuotePdfAttachment(p: {
+  firmName: string
+  leadName: string
+  serviceType: string
+  documentType: 'estimate' | 'invoice'
+  referenceCode?: string | null
+  items: PdfQuoteItem[]
+  totals: {
+    subtotal: number
+    discountTotal: number
+    vatAmount: number
+    grandTotal: number
+  }
+}): Promise<EmailAttachment> {
+  const pdfDoc = await PDFDocument.create()
+  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+
+  const PAGE_W = 595
+  const PAGE_H = 842
+  const MARGIN = 48
+  const CONTENT_W = PAGE_W - MARGIN * 2
+
+  let page = pdfDoc.addPage([PAGE_W, PAGE_H])
+  let y = PAGE_H - MARGIN
+  let isFirstPage = true
+
+  const ensureSpace = (needed: number) => {
+    if (y - needed < MARGIN) {
+      page = pdfDoc.addPage([PAGE_W, PAGE_H])
+      y = PAGE_H - MARGIN
+    }
+  }
+
+  const drawText = (
+    text: string,
+    x: number,
+    yPos: number,
+    size = 11,
+    bold = false,
+    color = rgb(0.13, 0.13, 0.13),
+  ) => {
+    page.drawText(text, {
+      x,
+      y: yPos,
+      size,
+      font: bold ? fontBold : fontRegular,
+      color,
+    })
+  }
+
+  if (isFirstPage) {
+    page.drawRectangle({
+      x: MARGIN,
+      y: y - 74,
+      width: CONTENT_W,
+      height: 74,
+      color: rgb(0.94, 0.96, 0.99),
+      borderColor: rgb(0.85, 0.88, 0.94),
+      borderWidth: 1,
+    })
+    drawText(p.firmName, MARGIN + 16, y - 28, 19, true, rgb(0.12, 0.23, 0.37))
+    drawText(
+      p.documentType === 'invoice' ? 'Invoice' : 'Estimate',
+      PAGE_W - MARGIN - 120,
+      y - 28,
+      18,
+      true,
+      rgb(0.12, 0.23, 0.37),
+    )
+    if (p.referenceCode) {
+      drawText(`Ref: ${p.referenceCode}`, PAGE_W - MARGIN - 120, y - 46, 10, false, rgb(0.35, 0.35, 0.35))
+    }
+    y -= 96
+
+    page.drawRectangle({
+      x: MARGIN,
+      y: y - 56,
+      width: CONTENT_W,
+      height: 56,
+      color: rgb(0.98, 0.98, 0.98),
+      borderColor: rgb(0.9, 0.9, 0.9),
+      borderWidth: 1,
+    })
+    drawText('Prepared for', MARGIN + 14, y - 20, 9, true, rgb(0.45, 0.45, 0.45))
+    drawText(p.leadName, MARGIN + 14, y - 36, 11, false)
+    drawText('Service', MARGIN + CONTENT_W - 170, y - 20, 9, true, rgb(0.45, 0.45, 0.45))
+    drawText(formatServiceLabel(p.serviceType), MARGIN + CONTENT_W - 170, y - 36, 11, false)
+    y -= 76
+    isFirstPage = false
+  }
+
+  ensureSpace(32)
+  page.drawRectangle({
+    x: MARGIN,
+    y: y - 28,
+    width: CONTENT_W,
+    height: 28,
+    color: rgb(0.97, 0.97, 0.97),
+    borderColor: rgb(0.9, 0.9, 0.9),
+    borderWidth: 1,
+  })
+  drawText('Description', MARGIN + 12, y - 18, 10, true, rgb(0.36, 0.36, 0.36))
+  drawText('Amount', PAGE_W - MARGIN - 84, y - 18, 10, true, rgb(0.36, 0.36, 0.36))
+  y -= 30
+
+  const wrapText = (text: string, maxChars = 62): string[] => {
+    if (text.length <= maxChars) return [text]
+    const words = text.split(' ')
+    const lines: string[] = []
+    let line = ''
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word
+      if (next.length <= maxChars) {
+        line = next
+      } else {
+        if (line) lines.push(line)
+        line = word
+      }
+    }
+    if (line) lines.push(line)
+    return lines
+  }
+
+  for (const item of p.items) {
+    const lines = wrapText(item.description || 'Item')
+    const rowHeight = Math.max(24, 16 + lines.length * 12)
+    ensureSpace(rowHeight + 6)
+
+    page.drawRectangle({
+      x: MARGIN,
+      y: y - rowHeight,
+      width: CONTENT_W,
+      height: rowHeight,
+      color: rgb(1, 1, 1),
+      borderColor: rgb(0.92, 0.92, 0.92),
+      borderWidth: 1,
+    })
+
+    lines.forEach((line, idx) => {
+      drawText(line, MARGIN + 12, y - 16 - idx * 12, 10, false)
+    })
+    drawText(formatCurrency(item.amount), PAGE_W - MARGIN - 84, y - 16, 10, false)
+    y -= rowHeight
+  }
+
+  ensureSpace(118)
+  const totalsBoxW = 240
+  const totalsX = PAGE_W - MARGIN - totalsBoxW
+  page.drawRectangle({
+    x: totalsX,
+    y: y - 98,
+    width: totalsBoxW,
+    height: 98,
+    color: rgb(0.98, 0.98, 0.98),
+    borderColor: rgb(0.9, 0.9, 0.9),
+    borderWidth: 1,
+  })
+  drawText('Subtotal', totalsX + 12, y - 20, 10, false, rgb(0.35, 0.35, 0.35))
+  drawText(formatCurrency(p.totals.subtotal), totalsX + totalsBoxW - 90, y - 20, 10, true)
+
+  if (p.totals.discountTotal > 0) {
+    drawText('Discount', totalsX + 12, y - 38, 10, false, rgb(0.35, 0.35, 0.35))
+    drawText(`-${formatCurrency(p.totals.discountTotal)}`, totalsX + totalsBoxW - 90, y - 38, 10, true, rgb(0.03, 0.45, 0.22))
+  }
+
+  drawText('VAT', totalsX + 12, y - 56, 10, false, rgb(0.35, 0.35, 0.35))
+  drawText(formatCurrency(p.totals.vatAmount), totalsX + totalsBoxW - 90, y - 56, 10, true)
+
+  page.drawLine({
+    start: { x: totalsX + 10, y: y - 68 },
+    end: { x: totalsX + totalsBoxW - 10, y: y - 68 },
+    color: rgb(0.85, 0.85, 0.85),
+    thickness: 1,
+  })
+  drawText('Grand Total', totalsX + 12, y - 84, 12, true)
+  drawText(formatCurrency(p.totals.grandTotal), totalsX + totalsBoxW - 104, y - 84, 12, true)
+
+  const bytes = await pdfDoc.save()
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+  const base64 = btoa(binary)
+
+  return {
+    filename: `${p.documentType}-${p.referenceCode || 'quote'}.pdf`,
+    content: base64,
+    encoding: 'base64',
+  }
 }
 
 async function sendViaSendGrid(opts: EmailOptions): Promise<boolean> {
@@ -229,9 +437,10 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
-    const [quoteRes, leadRes] = await Promise.all([
+    const [quoteRes, leadRes, itemsRes] = await Promise.all([
       supabase.from('quotes').select('*').eq('id', quoteId).single(),
       supabase.from('leads').select('*').eq('id', leadId).single(),
+      supabase.from('quote_items').select('description, amount, sort_order').eq('quote_id', quoteId).order('sort_order', { ascending: true }),
     ])
 
     if (!quoteRes.data || !leadRes.data) {
@@ -246,6 +455,7 @@ Deno.serve(async (req) => {
 
     const quote = quoteRes.data
     const lead = leadRes.data
+    const quoteItems = (itemsRes.data || []) as Array<{ description: string; amount: number; sort_order: number }>
 
     const { data: firm } = await supabase
       .from('firms')
@@ -281,13 +491,27 @@ Deno.serve(async (req) => {
     }
 
     if (pdfAttachment?.base64) {
-      emailOptions.attachments = [
-        {
-          filename: pdfAttachment.filename || `${documentType}-${quote.reference_code || quoteId}.pdf`,
-          content: pdfAttachment.base64,
-          encoding: 'base64',
+      emailOptions.attachments = [{
+        filename: pdfAttachment.filename || `${documentType}-${quote.reference_code || quoteId}.pdf`,
+        content: pdfAttachment.base64,
+        encoding: 'base64',
+      }]
+    } else {
+      const autoPdf = await generateQuotePdfAttachment({
+        firmName: firm.name,
+        leadName: lead.full_name,
+        serviceType: lead.service_type,
+        documentType,
+        referenceCode: quote.reference_code,
+        items: quoteItems.map((it) => ({ description: it.description, amount: Number(it.amount) })),
+        totals: {
+          subtotal: Number(totals.subtotal || quote.subtotal || 0),
+          discountTotal: Number(quote.discount_total || 0),
+          vatAmount: Number(totals.vatAmount || totals.vatTotal || quote.vat_total || 0),
+          grandTotal: Number(totals.grandTotal || quote.grand_total || 0),
         },
-      ]
+      })
+      emailOptions.attachments = [autoPdf]
     }
 
     const result = await sendEmail(emailOptions)
