@@ -8,8 +8,6 @@ import PurchaseSection from '@/components/quote/PurchaseSection'
 import SaleSection from '@/components/quote/SaleSection'
 import RemortgageSection from '@/components/quote/RemortgageSection'
 import AdditionalInfoSection from '@/components/quote/AdditionalInfoSection'
-import QuoteResultDisplay from '@/components/quote/QuoteResultDisplay'
-import EstimateDocument from '@/components/quote/EstimateDocument'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Scale, Send, FileText } from 'lucide-react'
@@ -47,7 +45,8 @@ const TIMELINE_OPTS = [
 export default function PublicQuotePage() {
   const { firmSlug } = useParams<{ firmSlug: string }>()
   const [searchParams] = useSearchParams()
-  const isEmbed = searchParams.get('embed') === 'true'
+  const embedParam = searchParams.get('embed')
+  const isEmbed = embedParam === '1' || embedParam === 'true'
 
   const form = useQuoteForm()
   const [submitted, setSubmitted] = useState(false)
@@ -55,8 +54,7 @@ export default function PublicQuotePage() {
   const [discountInput, setDiscountInput] = useState('')
   const [validatedDiscount, setValidatedDiscount] = useState<DiscountCode | null>(null)
   const [quoteResult, setQuoteResult] = useState<ReturnType<typeof calculateQuoteWithFallback> | null>(null)
-  const [showEstimate, setShowEstimate] = useState(false)
-  const [, setLeadRef] = useState<string | null>(null)
+  const [referenceCode, setReferenceCode] = useState<string | null>(null)
 
   // Load firm
   const { data: firm, isLoading: firmLoading } = useQuery({
@@ -114,14 +112,32 @@ export default function PublicQuotePage() {
     return services
   }, [config])
 
-  // Embed height publishing
+  // Embed height publishing — use ResizeObserver to push height changes to parent
+  // so auto-resizing iframe snippets can adapt. Matches the `conveyquote:height`
+  // message contract documented in Settings → Embed.
   useEffect(() => {
     if (!isEmbed) return
-    const interval = setInterval(() => {
-      const height = document.body.scrollHeight
-      window.parent.postMessage({ type: 'conveyquote-resize', height }, '*')
-    }, 500)
-    return () => clearInterval(interval)
+    let lastHeight = 0
+    const publish = () => {
+      const height = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight
+      )
+      if (height !== lastHeight) {
+        lastHeight = height
+        window.parent.postMessage({ type: 'conveyquote:height', height }, '*')
+      }
+    }
+    publish()
+    const ro = new ResizeObserver(publish)
+    ro.observe(document.body)
+    window.addEventListener('load', publish)
+    const interval = setInterval(publish, 1000) // safety net for late renders
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('load', publish)
+      clearInterval(interval)
+    }
   }, [isEmbed])
 
   function checkManualReview(): boolean {
@@ -207,47 +223,58 @@ export default function PublicQuotePage() {
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('create-public-lead', {
-        body: {
-          lead: leadPayload,
-          discountCodeId: validatedDiscount?.id || null,
-          totals: isReview ? undefined : {
-            subtotal: result.breakdown.subtotal,
-            vatTotal: result.breakdown.vatAmount,
-            grandTotal: result.breakdown.grandTotal,
-          },
-          quoteItems: isReview ? undefined : result.breakdown.items.map((item, i) => ({
-            description: item.description,
-            amount: item.amount,
-            is_vatable: item.is_vatable,
-            item_type: item.item_type,
-            sort_order: i,
-          })),
+      // Use supabase.rpc() instead of edge functions to avoid CORS issues.
+      // The RPC goes through the REST API (PostgREST) which has CORS
+      // handled by the Supabase gateway — works from any embedded origin.
+      // Emails are triggered server-side via pg_net (no browser involved).
+      const rpcPromise = supabase.rpc('create_public_lead', {
+        p_lead: leadPayload,
+        p_discount_code_id: validatedDiscount?.id || null,
+        p_totals: isReview ? null : {
+          subtotal: result.breakdown.subtotal,
+          vatTotal: result.breakdown.vatAmount,
+          grandTotal: result.breakdown.grandTotal,
         },
+        p_quote_items: isReview ? null : result.breakdown.items.map((item, i) => ({
+          description: item.description,
+          amount: item.amount,
+          is_vatable: item.is_vatable,
+          item_type: item.item_type,
+          sort_order: i,
+        })),
       })
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out')), 45000),
+      )
+      const { data, error } = await Promise.race([rpcPromise, timeoutPromise])
 
-      if (error) throw error
-
-      setQuoteResult(result)
-      setLeadRef(data?.instructionRef || data?.id || null)
-      setSubmitted(true)
-    } catch (err) {
-      // Fallback: insert lead directly if edge function unavailable
-      const { data: lead, error: insertError } = await supabase
-        .from('leads')
-        .insert(leadPayload)
-        .select('id')
-        .single()
-
-      if (insertError) {
-        toast.error('Failed to submit. Please try again.')
-        setSubmitting(false)
-        return
+      if (error) {
+        throw new Error(error.message || 'Submission failed')
       }
 
       setQuoteResult(result)
-      setLeadRef(lead?.id || null)
+      setReferenceCode(data?.referenceCode || null)
       setSubmitted(true)
+
+      // Fire email notification via edge function (fire-and-forget).
+      // The RPC only creates data — emails are sent by the edge function.
+      // This is non-blocking: if it fails, the lead is already saved.
+      if (data?.id) {
+        supabase.functions.invoke('create-public-leads', {
+          body: { notifyLeadId: data.id, firmId: firm.id },
+        }).then(({ error: fnErr }) => {
+          if (fnErr) console.warn('Email notification failed (lead still saved):', fnErr)
+          else console.log('Email notification sent successfully')
+        }).catch((fnErr) => {
+          console.warn('Email notification request failed (lead still saved):', fnErr)
+        })
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('create-public-leads RPC failed:', err)
+      toast.error(`Failed to submit: ${message}`)
+      setSubmitting(false)
+      return
     }
 
     setSubmitting(false)
@@ -274,79 +301,146 @@ export default function PublicQuotePage() {
 
   const primaryColor = firm.primary_color || '#1e3a5f'
 
-  // Submitted state
+  // Submitted state — invoice-style layout
   if (submitted && quoteResult) {
+    const serviceLabel = form.serviceType.replace(/_/g, ' & ').replace(/\b\w/g, c => c.toUpperCase())
+    const isManualReview = quoteResult.noMatchFallback
+
     return (
-      <div className={`min-h-screen bg-muted/30 ${isEmbed ? 'p-4' : 'py-8 px-4'}`}>
+      <div className={`bg-muted/30 ${isEmbed ? 'p-4' : 'min-h-screen py-8 px-4'}`}>
         <div className="max-w-2xl mx-auto">
           {!isEmbed && (
-            <div className="text-center mb-8">
-              <Scale className="h-8 w-8 mx-auto mb-2" style={{ color: primaryColor }} />
-              <h1 className="text-2xl font-bold" style={{ color: primaryColor }}>{firm.name}</h1>
+            <div className="text-center mb-6">
+              <Scale className="h-7 w-7 mx-auto mb-2" style={{ color: primaryColor }} />
+              <h1 className="text-xl font-bold" style={{ color: primaryColor }}>{firm.name}</h1>
             </div>
           )}
-          <div className="bg-card rounded-xl border border-border p-8 shadow-sm">
-            <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-50 mb-4">
-                <Send className="h-7 w-7 text-green-600" />
-              </div>
-              <h2 className="text-xl font-bold text-foreground">
-                {quoteResult.noMatchFallback ? 'Enquiry Submitted' : 'Your Quote'}
-              </h2>
-              <p className="text-muted-foreground mt-1">
-                {quoteResult.noMatchFallback
-                  ? 'We will review your details and get in touch shortly.'
-                  : 'Here is your conveyancing quote estimate.'}
+
+          {/* Success banner */}
+          <div className="rounded-xl border border-green-200 bg-green-50/60 p-4 mb-4 flex items-center gap-3">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+              <Send className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-green-900 text-sm">
+                {isManualReview ? 'Enquiry Submitted Successfully' : 'Quote Submitted Successfully'}
+              </p>
+              <p className="text-green-700 text-xs mt-0.5">
+                {isManualReview
+                  ? 'We will review your details and be in touch shortly.'
+                  : 'A copy has been sent to your email. A member of our team will be in touch soon.'}
               </p>
             </div>
-
-            <QuoteResultDisplay
-              breakdown={quoteResult.breakdown}
-              noMatchFallback={quoteResult.noMatchFallback}
-              firmName={firm.name}
-            />
-
-            {!quoteResult.noMatchFallback && firm.show_estimate_document && (
-              <div className="mt-6 flex gap-3 justify-center">
-                <button
-                  onClick={() => setShowEstimate(!showEstimate)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent"
-                >
-                  <FileText className="h-4 w-4" />
-                  {showEstimate ? 'Hide' : 'View'} Estimate
-                </button>
-              </div>
-            )}
-
-            {showEstimate && (
-              <div className="mt-6">
-                <EstimateDocument
-                  firmName={firm.name}
-                  leadName={`${form.contact.first_name} ${form.contact.surname}`}
-                  items={quoteResult.breakdown.items}
-                  totals={{
-                    subtotal: quoteResult.breakdown.subtotal,
-                    discountTotal: quoteResult.breakdown.discountTotal,
-                    vatAmount: quoteResult.breakdown.vatAmount,
-                    grandTotal: quoteResult.breakdown.grandTotal,
-                  }}
-                  documentType="estimate"
-                  serviceType={form.serviceType}
-                />
-              </div>
-            )}
-
-            {firm.disclaimer_text && (
-              <p className="mt-6 text-xs text-muted-foreground text-center">{firm.disclaimer_text}</p>
-            )}
           </div>
+
+          {isManualReview ? (
+            <div className="bg-card rounded-xl border border-border p-8 shadow-sm text-center">
+              <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+              <h2 className="text-lg font-bold text-foreground">Under Review</h2>
+              <p className="text-muted-foreground text-sm mt-2 max-w-sm mx-auto">
+                Your enquiry requires a manual review. We&apos;ll prepare a personalised quote and contact you shortly.
+              </p>
+            </div>
+          ) : (
+            /* Invoice-style document */
+            <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+              {/* Header band */}
+              <div className="px-8 py-6" style={{ background: primaryColor }}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-white">{firm.name}</h2>
+                    {referenceCode && (
+                      <p className="text-sm text-white/70 mt-1 font-mono">{referenceCode}</p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-semibold tracking-wider text-white/60 uppercase">Quote Estimate</span>
+                    <p className="text-sm text-white/80 mt-0.5">{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Info grid */}
+              <div className="px-8 py-5 border-b border-border grid grid-cols-2 gap-6">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Prepared For</p>
+                  <p className="text-sm font-medium text-foreground">{form.contact.first_name} {form.contact.surname}</p>
+                  <p className="text-xs text-muted-foreground">{form.contact.email}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Service</p>
+                  <p className="text-sm font-medium text-foreground">{serviceLabel}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Property value: {formatCurrency(form.getPropertyValue())}
+                  </p>
+                </div>
+              </div>
+
+              {/* Line items */}
+              <div className="px-8 py-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b-2" style={{ borderColor: primaryColor }}>
+                      <th className="pb-2 text-left font-semibold text-foreground text-xs uppercase tracking-wider">Description</th>
+                      <th className="pb-2 text-right font-semibold text-foreground text-xs uppercase tracking-wider w-24">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quoteResult.breakdown.items.map((item, idx) => (
+                      <tr key={idx} className={idx % 2 === 0 ? 'bg-muted/30' : ''}>
+                        <td className="py-2.5 px-2 text-foreground">{item.description}</td>
+                        <td className={`py-2.5 px-2 text-right font-medium tabular-nums ${item.amount < 0 ? 'text-green-600' : 'text-foreground'}`}>
+                          {item.amount < 0 && '\u2212'}{formatCurrency(Math.abs(item.amount))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals */}
+              <div className="px-8 py-5 border-t border-border">
+                <div className="ml-auto max-w-xs space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-medium tabular-nums">{formatCurrency(quoteResult.breakdown.subtotal)}</span>
+                  </div>
+                  {quoteResult.breakdown.discountTotal > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Discount</span>
+                      <span className="font-medium text-green-600 tabular-nums">&minus;{formatCurrency(quoteResult.breakdown.discountTotal)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">VAT (20%)</span>
+                    <span className="font-medium tabular-nums">{formatCurrency(quoteResult.breakdown.vatAmount)}</span>
+                  </div>
+                  <div className="flex justify-between pt-3 border-t-2 text-base" style={{ borderColor: primaryColor }}>
+                    <span className="font-bold" style={{ color: primaryColor }}>Total (inc. VAT)</span>
+                    <span className="font-bold text-lg tabular-nums" style={{ color: primaryColor }}>{formatCurrency(quoteResult.breakdown.grandTotal)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-8 py-4 bg-muted/30 border-t border-border">
+                <p className="text-[11px] text-muted-foreground text-center">
+                  This is an estimate only and may be subject to change. Please contact us for a full breakdown.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {firm.disclaimer_text && (
+            <p className="mt-4 text-xs text-muted-foreground text-center">{firm.disclaimer_text}</p>
+          )}
         </div>
       </div>
     )
   }
 
   return (
-    <div className={`min-h-screen bg-muted/30 ${isEmbed ? 'p-4' : 'py-8 px-4'}`}>
+    <div className={`bg-muted/30 ${isEmbed ? 'p-4' : 'min-h-screen py-8 px-4'}`}>
       <div className="max-w-2xl mx-auto">
         {!isEmbed && (
           <div className="text-center mb-8">

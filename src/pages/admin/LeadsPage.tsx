@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -50,21 +50,49 @@ export default function LeadsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
 
   // ---- Leads query ----
+  // Search matches name / email AND any quote reference_code on the firm's quotes,
+  // so staff can paste a CQ-XXXX reference and land straight on the correct lead.
+  // Leads with a submitted instruction are surfaced first.
   const { data: leadsData, isLoading } = useQuery({
     queryKey: ['admin-leads', firmId, statusFilter, searchTerm, page],
     queryFn: async () => {
+      const trimmed = searchTerm.trim()
+
+      // Resolve any lead IDs that match a quote reference code for this firm.
+      let refLeadIds: string[] = []
+      if (trimmed) {
+        const { data: refQuotes } = await supabase
+          .from('quotes')
+          .select('lead_id')
+          .eq('firm_id', firmId!)
+          .ilike('reference_code', `%${trimmed}%`)
+        refLeadIds = (refQuotes ?? [])
+          .map((q: { lead_id: string | null }) => q.lead_id)
+          .filter((x): x is string => !!x)
+      }
+
       let query = supabase
         .from('leads')
-        .select('*', { count: 'exact' })
+        .select('*, quotes(reference_code)', { count: 'exact' })
         .eq('firm_id', firmId!)
+        // Instructed leads first, then newest.
+        .order('instruction_submitted_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter)
       }
-      if (searchTerm.trim()) {
-        query = query.or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+      if (trimmed) {
+        const escaped = trimmed.replace(/[%,]/g, '')
+        const orClauses = [
+          `full_name.ilike.%${escaped}%`,
+          `email.ilike.%${escaped}%`,
+        ]
+        if (refLeadIds.length > 0) {
+          orClauses.push(`id.in.(${refLeadIds.join(',')})`)
+        }
+        query = query.or(orClauses.join(','))
       }
 
       const { data, count } = await query
@@ -142,6 +170,7 @@ export default function LeadsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Ref</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Name</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase hidden sm:table-cell">Email</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Service</th>
@@ -160,7 +189,26 @@ export default function LeadsPage() {
                       selectedLeadId === lead.id ? 'bg-primary/5' : 'hover:bg-muted/50'
                     )}
                   >
-                    <td className="px-5 py-3 text-sm font-medium text-foreground">{lead.full_name}</td>
+                    <td className="px-5 py-3 text-sm text-muted-foreground font-mono">
+                      {(() => {
+                        const quotes = (lead as unknown as Record<string, unknown>).quotes as { reference_code: string | null }[] | null
+                        const ref = quotes?.[0]?.reference_code
+                        return ref ? <span className="text-xs">{ref}</span> : <span className="text-xs text-muted-foreground/50">—</span>
+                      })()}
+                    </td>
+                    <td className="px-5 py-3 text-sm font-medium text-foreground">
+                      <div className="flex items-center gap-2">
+                        <span>{lead.full_name}</span>
+                        {lead.instruction_submitted_at && (
+                          <span
+                            title={`Instructed ${formatDate(lead.instruction_submitted_at)}`}
+                            className="inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 uppercase tracking-wide"
+                          >
+                            Instructed
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-5 py-3 text-sm text-muted-foreground hidden sm:table-cell">{lead.email}</td>
                     <td className="px-5 py-3 text-sm text-muted-foreground capitalize">{lead.service_type.replace('_', ' & ')}</td>
                     <td className="px-5 py-3 text-sm text-foreground">{formatCurrency(lead.property_value)}</td>
@@ -382,7 +430,28 @@ function QuoteSection({
 }) {
   const queryClient = useQueryClient()
   const [items, setItems] = useState<QuoteLineItem[]>([])
-  const [generated, setGenerated] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [sending, setSending] = useState(false)
+
+  // Hydrate local items from existing quote so admin can edit saved quotes.
+  useEffect(() => {
+    if (existingItems.length > 0) {
+      setItems(
+        existingItems.map((qi) => ({
+          description: qi.description,
+          amount: qi.amount,
+          is_vatable: qi.is_vatable,
+          item_type: qi.item_type,
+          source_type: qi.source_type,
+          source_reference_id: qi.source_reference_id,
+          sort_order: qi.sort_order,
+          is_manual: qi.is_manual,
+          is_discount: qi.is_discount,
+        }))
+      )
+      setDirty(false)
+    }
+  }, [existingItems])
 
   // Load firm pricing
   const { data: bands = [] } = useQuery({
@@ -462,7 +531,7 @@ function QuoteSection({
 
     const result = calculateQuote(formData, bands, extras)
     setItems(result.breakdown.items)
-    setGenerated(true)
+    setDirty(true)
 
     if (result.noMatchFallback) {
       toast.warning('No matching price band found. Only extras were applied.')
@@ -472,10 +541,12 @@ function QuoteSection({
   // Edit item inline
   function updateItem(idx: number, field: keyof QuoteLineItem, value: any) {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
+    setDirty(true)
   }
 
   function removeItem(idx: number) {
     setItems((prev) => prev.filter((_, i) => i !== idx))
+    setDirty(true)
   }
 
   function addItem() {
@@ -491,18 +562,18 @@ function QuoteSection({
         is_manual: true,
       },
     ])
+    setDirty(true)
   }
 
-  // Save quote
+  // Save quote — returns the quote id so callers can chain follow-up actions.
   const saveMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<string> => {
       const totals = recalculateTotals(items)
 
-      // Upsert quote
       const quotePayload = {
         lead_id: lead.id,
         firm_id: firmId,
-        status: 'draft' as const,
+        status: (existingQuote?.status ?? 'draft') as Quote['status'],
         subtotal: totals.subtotal,
         vat_total: totals.vatAmount,
         grand_total: totals.grandTotal,
@@ -511,14 +582,19 @@ function QuoteSection({
 
       let quoteId = existingQuote?.id
       if (quoteId) {
-        await supabase.from('quotes').update(quotePayload).eq('id', quoteId)
+        const { error } = await supabase.from('quotes').update(quotePayload).eq('id', quoteId)
+        if (error) throw error
         await supabase.from('quote_items').delete().eq('quote_id', quoteId)
       } else {
-        const { data } = await supabase.from('quotes').insert(quotePayload).select('id').single()
+        const { data, error } = await supabase
+          .from('quotes')
+          .insert(quotePayload)
+          .select('id')
+          .single()
+        if (error) throw error
         quoteId = data!.id
       }
 
-      // Insert items
       const itemRows = items.map((it, i) => ({
         quote_id: quoteId!,
         description: it.description,
@@ -532,173 +608,110 @@ function QuoteSection({
         is_discount: it.is_discount ?? false,
       }))
       if (itemRows.length > 0) {
-        await supabase.from('quote_items').insert(itemRows)
+        const { error } = await supabase.from('quote_items').insert(itemRows)
+        if (error) throw error
       }
 
-      // Mark lead as quoted
       await supabase.from('leads').update({ status: 'quoted' }).eq('id', lead.id)
+      return quoteId!
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead-quote'] })
+      queryClient.invalidateQueries({ queryKey: ['lead-quote-items'] })
       queryClient.invalidateQueries({ queryKey: ['admin-leads'] })
-      toast.success('Quote saved successfully')
+      setDirty(false)
+      toast.success('Quote saved')
     },
-    onError: () => toast.error('Failed to save quote'),
+    onError: (e: any) => toast.error(e?.message || 'Failed to save quote'),
   })
 
-  function handleSendEmail() {
-    toast.success('Quote email queued for sending')
+  async function handleSendEmail() {
+    if (items.length === 0) {
+      toast.error('Add at least one line item before sending')
+      return
+    }
+    setSending(true)
+    try {
+      // Persist any unsaved edits first so the email reflects current state.
+      let quoteId = existingQuote?.id
+      if (dirty || !quoteId) {
+        quoteId = await saveMut.mutateAsync()
+      }
+      const totals = recalculateTotals(items)
+      // Hard client-side timeout so the button can never appear "stuck" — even
+      // if the edge function or network misbehaves the user gets a clear error.
+      const invokePromise = supabase.functions.invoke('send-quote-email', {
+        body: {
+          quoteId,
+          leadId: lead.id,
+          documentType: 'quote',
+          totals: {
+            subtotal: totals.subtotal,
+            vatTotal: totals.vatAmount,
+            grandTotal: totals.grandTotal,
+          },
+        },
+      })
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Email request timed out after 45s. Please try again.')), 45000),
+      )
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise])
+      if (error) throw error
+      if (data && data.ok === false) {
+        throw new Error(data?.error?.message || 'Send failed')
+      }
+      queryClient.invalidateQueries({ queryKey: ['lead-quote'] })
+      toast.success(`Quote email sent to ${lead.email}`)
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to send quote email')
+    } finally {
+      setSending(false)
+    }
   }
 
-  const totals = generated || items.length > 0 ? recalculateTotals(items) : null
-
-  // Show existing items if no generated items yet
-  const displayItems = generated ? items : existingItems.length > 0
-    ? existingItems.map((qi) => ({
-        description: qi.description,
-        amount: qi.amount,
-        is_vatable: qi.is_vatable,
-        item_type: qi.item_type,
-        source_type: qi.source_type,
-        source_reference_id: qi.source_reference_id,
-        sort_order: qi.sort_order,
-        is_manual: qi.is_manual,
-        is_discount: qi.is_discount,
-      } as QuoteLineItem))
-    : []
-
-  const displayTotals = generated ? totals : existingQuote
-    ? { subtotal: existingQuote.subtotal, discountTotal: existingQuote.discount_total, vatAmount: existingQuote.vat_total, grandTotal: existingQuote.grand_total }
-    : null
+  const totals = items.length > 0 ? recalculateTotals(items) : null
+  const referenceCode =
+    (existingQuote as { reference_code?: string } | null)?.reference_code ||
+    (existingQuote ? `CQ-${existingQuote.id.substring(0, 8).toUpperCase()}` : null)
 
   return (
     <section>
-      <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">Quote</h3>
-
-      {existingQuote && !generated && (
-        <div className="mb-3 flex items-center gap-2">
-          <span className={cn(
-            'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-            existingQuote.status === 'sent' ? 'bg-green-100 text-green-700' :
-            existingQuote.status === 'draft' ? 'bg-gray-100 text-gray-700' :
-            'bg-blue-100 text-blue-700'
-          )}>
-            {existingQuote.status}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            Created {formatDate(existingQuote.created_at)}
-          </span>
-        </div>
-      )}
-
-      {displayItems.length > 0 ? (
-        <div className="space-y-3">
-          <div className="rounded-lg border border-border divide-y divide-border">
-            {(generated ? items : displayItems).map((item, idx) => (
-              <div key={idx} className="flex items-center gap-3 px-4 py-2.5">
-                {generated ? (
-                  <>
-                    <input
-                      type="text"
-                      value={item.description}
-                      onChange={(e) => updateItem(idx, 'description', e.target.value)}
-                      className="flex-1 text-sm bg-transparent border-b border-dashed border-border focus:outline-none focus:border-primary"
-                    />
-                    <input
-                      type="number"
-                      value={item.amount}
-                      onChange={(e) => updateItem(idx, 'amount', parseFloat(e.target.value) || 0)}
-                      className="w-24 text-sm text-right bg-transparent border-b border-dashed border-border focus:outline-none focus:border-primary"
-                    />
-                    <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={item.is_vatable}
-                        onChange={(e) => updateItem(idx, 'is_vatable', e.target.checked)}
-                        className="rounded"
-                      />
-                      VAT
-                    </label>
-                    <button onClick={() => removeItem(idx)} className="p-1 text-muted-foreground hover:text-destructive">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span className="flex-1 text-sm text-foreground">{item.description}</span>
-                    <span className="text-sm font-medium text-foreground">{formatCurrency(item.amount)}</span>
-                    {item.is_vatable && <span className="text-xs text-muted-foreground">+VAT</span>}
-                  </>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Quote / Invoice
+        </h3>
+        <div className="flex items-center gap-2">
+          {existingQuote && (
+            <>
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+                  existingQuote.status === 'sent'
+                    ? 'bg-green-100 text-green-700'
+                    : existingQuote.status === 'draft'
+                      ? 'bg-gray-100 text-gray-700'
+                      : 'bg-blue-100 text-blue-700',
                 )}
-              </div>
-            ))}
-          </div>
-
-          {generated && (
-            <button
-              onClick={addItem}
-              className="text-sm text-primary hover:underline flex items-center gap-1"
-            >
-              <Plus className="h-3.5 w-3.5" /> Add line item
-            </button>
-          )}
-
-          {/* Totals */}
-          {displayTotals && (
-            <div className="rounded-lg bg-muted/50 p-4 space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-medium">{formatCurrency(displayTotals.subtotal)}</span>
-              </div>
-              {displayTotals.discountTotal > 0 && (
-                <div className="flex justify-between text-red-600">
-                  <span>Discount</span>
-                  <span>-{formatCurrency(displayTotals.discountTotal)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">VAT</span>
-                <span className="font-medium">{formatCurrency(displayTotals.vatAmount)}</span>
-              </div>
-              <div className="flex justify-between text-base font-semibold border-t border-border pt-1 mt-1">
-                <span>Grand Total</span>
-                <span>{formatCurrency(displayTotals.grandTotal)}</span>
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            {generated && (
-              <button
-                onClick={() => saveMut.mutate()}
-                disabled={saveMut.isPending}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
-                <Save className="h-4 w-4" />
-                {saveMut.isPending ? 'Saving...' : 'Save Quote'}
-              </button>
-            )}
-            <button
-              onClick={handleGenerate}
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-            >
-              <Zap className="h-4 w-4" />
-              {generated || displayItems.length > 0 ? 'Regenerate' : 'Generate Quote'}
-            </button>
-            {(existingQuote || generated) && (
-              <button
-                onClick={handleSendEmail}
-                className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-              >
-                <Send className="h-4 w-4" />
-                Send Quote Email
-              </button>
-            )}
-          </div>
+                {existingQuote.status}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Created {formatDate(existingQuote.created_at)}
+              </span>
+            </>
+          )}
         </div>
-      ) : (
-        <div className="rounded-lg border border-dashed border-border p-8 text-center">
-          <p className="text-sm text-muted-foreground mb-3">No quote generated yet.</p>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-10 text-center bg-muted/20">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <Zap className="h-5 w-5 text-primary" />
+          </div>
+          <p className="text-sm font-medium text-foreground mb-1">No quote yet</p>
+          <p className="text-xs text-muted-foreground mb-4">
+            Generate a quote from the customer's answers and your firm's pricing.
+          </p>
           <button
             onClick={handleGenerate}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -706,6 +719,163 @@ function QuoteSection({
             <Zap className="h-4 w-4" />
             Generate Quote
           </button>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+          {/* Invoice header */}
+          <div className="bg-gradient-to-br from-primary/5 to-transparent px-6 py-5 border-b border-border">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Quote Estimate
+                </p>
+                <p className="text-lg font-bold text-foreground mt-0.5">
+                  {referenceCode || 'New quote'}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Issued</p>
+                <p className="text-sm font-medium text-foreground mt-0.5">
+                  {existingQuote?.created_at ? formatDate(existingQuote.created_at) : 'Today'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                  Billed To
+                </p>
+                <p className="text-sm font-medium text-foreground">{lead.full_name}</p>
+                <p className="text-xs text-muted-foreground">{lead.email}</p>
+                {lead.phone && <p className="text-xs text-muted-foreground">{lead.phone}</p>}
+              </div>
+              <div className="sm:text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                  Service
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {ServiceLabels[lead.service_type as ServiceType] || lead.service_type}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Property value: {formatCurrency(lead.property_value || 0)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Line items table */}
+          <div className="px-6 pt-5">
+            <div className="grid grid-cols-[1fr_70px_110px_28px] items-center gap-3 px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border">
+              <div>Description</div>
+              <div className="text-center">VAT</div>
+              <div className="text-right">Amount</div>
+              <div></div>
+            </div>
+            <div className="divide-y divide-border">
+              {items.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="grid grid-cols-[1fr_70px_110px_28px] items-center gap-3 px-3 py-2.5 hover:bg-muted/30 transition-colors group"
+                >
+                  <input
+                    type="text"
+                    value={item.description}
+                    onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                    className="text-sm bg-transparent border-0 border-b border-transparent group-hover:border-dashed group-hover:border-border focus:outline-none focus:border-primary focus:border-solid px-0 py-0.5"
+                  />
+                  <label className="flex items-center justify-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={item.is_vatable}
+                      onChange={(e) => updateItem(idx, 'is_vatable', e.target.checked)}
+                      className="h-4 w-4 rounded border-border"
+                    />
+                  </label>
+                  <div className="flex items-center justify-end gap-1">
+                    <span className="text-sm text-muted-foreground">£</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={item.amount}
+                      onChange={(e) => updateItem(idx, 'amount', parseFloat(e.target.value) || 0)}
+                      className="w-20 text-sm text-right bg-transparent border-0 border-b border-transparent group-hover:border-dashed group-hover:border-border focus:outline-none focus:border-primary focus:border-solid px-0 py-0.5"
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeItem(idx)}
+                    className="p-1 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Remove line"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={addItem}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add line item
+            </button>
+          </div>
+
+          {/* Totals */}
+          {totals && (
+            <div className="px-6 pb-5 mt-3">
+              <div className="ml-auto max-w-xs space-y-1.5 text-sm">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span className="text-foreground tabular-nums">{formatCurrency(totals.subtotal)}</span>
+                </div>
+                {totals.discountTotal > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Discount</span>
+                    <span className="tabular-nums">-{formatCurrency(totals.discountTotal)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-muted-foreground">
+                  <span>VAT</span>
+                  <span className="text-foreground tabular-nums">{formatCurrency(totals.vatAmount)}</span>
+                </div>
+                <div className="flex justify-between border-t border-border pt-2 mt-2 text-base font-bold text-foreground">
+                  <span>Total (inc VAT)</span>
+                  <span className="tabular-nums">{formatCurrency(totals.grandTotal)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action bar */}
+          <div className="border-t border-border bg-muted/30 px-6 py-4 flex flex-wrap items-center gap-2 justify-between">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => saveMut.mutate()}
+                disabled={saveMut.isPending || !dirty}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                <Save className="h-4 w-4" />
+                {saveMut.isPending ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
+              </button>
+              <button
+                onClick={handleGenerate}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3.5 py-2 text-sm font-medium hover:bg-muted transition-colors"
+                title="Recalculate from firm pricing"
+              >
+                <Zap className="h-4 w-4" />
+                Regenerate
+              </button>
+            </div>
+            <button
+              onClick={handleSendEmail}
+              disabled={sending || saveMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-colors"
+            >
+              <Send className="h-4 w-4" />
+              {sending ? 'Sending…' : 'Send to customer'}
+            </button>
+          </div>
         </div>
       )}
     </section>

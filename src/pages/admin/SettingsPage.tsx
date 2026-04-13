@@ -462,7 +462,6 @@ function EmbedTab({ firm }: { firm: Firm }) {
   width="100%"
   height="${height}"
   frameborder="0"
-  scrolling="no"
   style="border:0;max-width:100%;"
   title="${firm.name} — Instant Conveyancing Quote"
 ></iframe>`

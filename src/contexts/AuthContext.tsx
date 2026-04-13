@@ -60,17 +60,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function resolveUserContext(userId: string) {
     lastUserIdRef.current = userId
     try {
-      const [firmResult, roleResult] = await Promise.all([
-        supabase
-          .from('firm_users')
-          .select('firm_id')
-          .eq('user_id', userId)
-          .maybeSingle(),
-        supabase.rpc('has_role', { _user_id: userId, _role: 'platform_owner' }),
-      ])
+      // Look up firm membership. Queries are independent so failures don't cascade.
+      const firmResult = await supabase
+        .from('firm_users')
+        .select('firm_id')
+        .eq('user_id', userId)
+        .maybeSingle()
 
-      setFirmId(firmResult.data?.firm_id ?? null)
-      setIsPlatformOwner(roleResult.data === true)
+      let resolvedFirmId: string | null = firmResult.data?.firm_id ?? null
+
+      // Fallback: if no firm_users row found (e.g. row exists but SELECT
+      // errored, or row was genuinely missing), look up via owner_user_id.
+      // This ensures the owner is never stuck on the onboarding screen.
+      if (!resolvedFirmId) {
+        const ownedFirmResult = await supabase
+          .from('firms')
+          .select('id')
+          .eq('owner_user_id', userId)
+          .maybeSingle()
+        resolvedFirmId = ownedFirmResult.data?.id ?? null
+      }
+
+      setFirmId(resolvedFirmId)
+
+      // platform_owner check is best-effort: failure must not block login
+      try {
+        const roleResult = await supabase.rpc('has_role', {
+          _user_id: userId,
+          _role: 'platform_owner',
+        })
+        setIsPlatformOwner(roleResult.data === true)
+      } catch {
+        setIsPlatformOwner(false)
+      }
     } catch {
       setFirmId(null)
       setIsPlatformOwner(false)

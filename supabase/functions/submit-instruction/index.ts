@@ -2,10 +2,12 @@
 // Records instruction details on the lead (into answers jsonb) and notifies
 // the firm by email.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
 interface EmailOptions {
@@ -16,36 +18,13 @@ interface EmailOptions {
   html: string
 }
 
-async function sendViaSendGrid(opts: EmailOptions): Promise<boolean> {
-  const apiKey = Deno.env.get('SENDGRID_API_KEY')
-  if (!apiKey) return false
-  const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: opts.to }] }],
-      from: { email: opts.from, name: opts.fromName || 'ConveyQuote' },
-      subject: opts.subject,
-      content: [{ type: 'text/html', value: opts.html }],
-    }),
-  })
-  return res.ok
-}
-
-async function sendViaResend(opts: EmailOptions): Promise<boolean> {
-  const apiKey = Deno.env.get('RESEND_API_KEY')
-  if (!apiKey) return false
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: opts.fromName ? `${opts.fromName} <${opts.from}>` : opts.from,
-      to: [opts.to],
-      subject: opts.subject,
-      html: opts.html,
-    }),
-  })
-  return res.ok
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms),
+    ),
+  ])
 }
 
 async function sendViaSmtp(opts: EmailOptions): Promise<boolean> {
@@ -54,54 +33,52 @@ async function sendViaSmtp(opts: EmailOptions): Promise<boolean> {
   const pass = Deno.env.get('SMTP_PASS')
   if (!host || !user || !pass) return false
   const port = parseInt(Deno.env.get('SMTP_PORT') || '587')
-  const secure = Deno.env.get('SMTP_SECURE') === 'true'
+  const implicitTls = Deno.env.get('SMTP_SECURE') === 'true' || port === 465
+
+  // Most SMTP relays reject any from-address the authenticated user does
+  // not own (553 5.7.1). Force the SMTP envelope sender to match SMTP_USER.
+  const smtpFromEmail = Deno.env.get('SMTP_FROM_EMAIL') || user
+  const fromHeader = opts.fromName ? `${opts.fromName} <${smtpFromEmail}>` : smtpFromEmail
+  const replyTo = opts.from && opts.from !== smtpFromEmail ? opts.from : undefined
+
+  let client: SMTPClient | null = null
   try {
-    const conn = secure
-      ? await Deno.connectTls({ hostname: host, port })
-      : await Deno.connect({ hostname: host, port })
-    const enc = new TextEncoder()
-    const dec = new TextDecoder()
-    const read = async () => {
-      const buf = new Uint8Array(4096)
-      const n = await conn.read(buf)
-      return n ? dec.decode(buf.subarray(0, n)) : ''
+    client = new SMTPClient({
+      connection: {
+        hostname: host,
+        port,
+        tls: implicitTls,
+        auth: { username: user, password: pass },
+      },
+    })
+    const message: Record<string, unknown> = {
+      from: fromHeader,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
     }
-    const cmd = async (c: string) => {
-      await conn.write(enc.encode(c + '\r\n'))
-      return read()
-    }
-    await read()
-    await cmd('EHLO conveyquote')
-    await cmd('AUTH LOGIN')
-    await cmd(btoa(user))
-    const authRes = await cmd(btoa(pass))
-    if (!authRes.startsWith('235')) {
-      conn.close()
-      return false
-    }
-    await cmd(`MAIL FROM:<${opts.from}>`)
-    await cmd(`RCPT TO:<${opts.to}>`)
-    await cmd('DATA')
-    let msg = `From: ${opts.fromName || 'ConveyQuote'} <${opts.from}>\r\n`
-    msg += `To: ${opts.to}\r\n`
-    msg += `Subject: ${opts.subject}\r\n`
-    msg += `MIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\n\r\n`
-    msg += opts.html + '\r\n.'
-    const dataRes = await cmd(msg)
-    await cmd('QUIT')
-    conn.close()
-    return dataRes.startsWith('250')
+    if (replyTo) message.replyTo = replyTo
+    // deno-lint-ignore no-explicit-any
+    await client.send(message as any)
+    await client.close()
+    return true
   } catch (err) {
     console.error('SMTP error:', err)
+    if (client) {
+      try { await client.close() } catch (_) { /* ignore */ }
+    }
     return false
   }
 }
 
-async function sendEmail(opts: EmailOptions): Promise<{ ok: boolean; provider: string }> {
-  if (await sendViaSmtp(opts)) return { ok: true, provider: 'smtp' }
-  if (await sendViaSendGrid(opts)) return { ok: true, provider: 'sendgrid' }
-  if (await sendViaResend(opts)) return { ok: true, provider: 'resend' }
-  return { ok: false, provider: 'none' }
+async function sendEmail(opts: EmailOptions): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const ok = await withTimeout(sendViaSmtp(opts), 20000, 'SMTP')
+    return ok ? { ok: true } : { ok: false, error: 'SMTP send failed' }
+  } catch (e) {
+    console.error('SMTP failed:', e)
+    return { ok: false, error: String(e) }
+  }
 }
 
 function getFromEmail(): string {
@@ -109,11 +86,12 @@ function getFromEmail(): string {
     Deno.env.get('SMTP_FROM_EMAIL') ||
     Deno.env.get('EMAIL_FROM') ||
     Deno.env.get('PLATFORM_FROM_EMAIL') ||
+    Deno.env.get('SMTP_USER') ||
     'noreply@conveyquote.com'
   )
 }
 
-function instructionEmailHtml(p: {
+function instructionFirmEmailHtml(p: {
   firmName: string
   leadName: string
   leadEmail: string
@@ -129,9 +107,25 @@ function instructionEmailHtml(p: {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
 <h2 style="color:#1e3a5f;">Instruction Submitted - ${p.firmName}</h2>
-<p>${p.leadName} (${p.leadEmail}) has completed instruction for a ${p.serviceType.replace('_', ' & ')} matter.</p>
+<p><strong>${p.leadName}</strong> (${p.leadEmail}) has completed instruction for a ${p.serviceType.replace('_', ' & ')} matter.</p>
 <table style="width:100%;border-collapse:collapse;margin-top:16px;">${rows}</table>
 <p style="margin-top:20px;">Log in to ConveyQuote to view and action this instruction.</p>
+</body></html>`
+}
+
+function instructionCustomerEmailHtml(p: {
+  firmName: string
+  leadName: string
+  serviceType: string
+}): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
+<h2 style="color:#1e3a5f;margin-bottom:8px;">${p.firmName}</h2>
+<p>Dear ${p.leadName},</p>
+<p>Thank you for instructing us with your ${p.serviceType.replace('_', ' & ')} matter. We've received your instruction details and a member of our team will be in touch shortly to begin the next steps.</p>
+<p>You don't need to do anything further at this stage — we'll reach out by email or phone with your case number and what to expect next.</p>
+<p style="margin-top:20px;">Kind regards,<br/>The ${p.firmName} team</p>
+<p style="color:#666;font-size:12px;margin-top:30px;border-top:1px solid #eee;padding-top:12px;">If you did not submit this instruction, please contact us immediately so we can investigate.</p>
 </body></html>`
 }
 
@@ -184,17 +178,22 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Merge instruction details into answers
+    // Merge instruction details into answers AND set the dedicated column so
+    // Postgres can efficiently sort/filter instructed leads.
     const existingAnswers = (lead.answers || {}) as Record<string, unknown>
+    const submittedAt = new Date().toISOString()
     const updatedAnswers = {
       ...existingAnswers,
       instruction: details,
-      instruction_submitted_at: new Date().toISOString(),
+      instruction_submitted_at: submittedAt,
     }
 
     const { error: updateError } = await supabase
       .from('leads')
-      .update({ answers: updatedAnswers })
+      .update({
+        answers: updatedAnswers,
+        instruction_submitted_at: submittedAt,
+      })
       .eq('id', leadId)
 
     if (updateError) {
@@ -204,17 +203,19 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Notify firm
+    // Notify firm AND confirm to customer
     const fromEmail = getFromEmail()
     const firmEmail = firm.reply_to_email || fromEmail
-    let emailResult: { ok: boolean; provider: string } = { ok: false, provider: 'skipped' }
+    const emailTasks: Array<{ task: string; ok: boolean; error?: string }> = []
+
+    // Firm notification
     try {
-      emailResult = await sendEmail({
+      const result = await sendEmail({
         to: firmEmail,
         from: fromEmail,
         fromName: 'ConveyQuote',
         subject: `Instruction Submitted: ${lead.full_name} - ${lead.service_type}`,
-        html: instructionEmailHtml({
+        html: instructionFirmEmailHtml({
           firmName: firm.name,
           leadName: lead.full_name,
           leadEmail: lead.email,
@@ -222,12 +223,31 @@ Deno.serve(async (req) => {
           details,
         }),
       })
+      emailTasks.push({ task: 'firm_notification', ...result })
     } catch (err) {
-      emailResult = { ok: false, provider: `error:${String(err)}` }
+      emailTasks.push({ task: 'firm_notification', ok: false, error: String(err) })
+    }
+
+    // Customer confirmation
+    try {
+      const result = await sendEmail({
+        to: lead.email,
+        from: fromEmail,
+        fromName: firm.sender_display_name || firm.name,
+        subject: `Instruction received — ${firm.name}`,
+        html: instructionCustomerEmailHtml({
+          firmName: firm.name,
+          leadName: lead.full_name,
+          serviceType: lead.service_type,
+        }),
+      })
+      emailTasks.push({ task: 'customer_confirmation', ...result })
+    } catch (err) {
+      emailTasks.push({ task: 'customer_confirmation', ok: false, error: String(err) })
     }
 
     return new Response(
-      JSON.stringify({ ok: true, leadId, email: emailResult }),
+      JSON.stringify({ ok: true, leadId, emailTasks }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (err) {

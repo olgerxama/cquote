@@ -14,16 +14,13 @@ export default function InstructionsPage() {
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['instructions', firmId],
     queryFn: async () => {
-      // Load all leads, then filter client-side for instruction_submitted_at
       const { data } = await supabase
         .from('leads')
-        .select('*')
+        .select('*, quotes(reference_code)')
         .eq('firm_id', firmId!)
-        .order('created_at', { ascending: false })
-      const all = (data ?? []) as Lead[]
-      return all.filter(
-        (l) => l.answers && (l.answers as Record<string, any>).instruction_submitted_at
-      )
+        .not('instruction_submitted_at', 'is', null)
+        .order('instruction_submitted_at', { ascending: false })
+      return (data ?? []) as Lead[]
     },
     enabled: !!firmId,
   })
@@ -48,6 +45,7 @@ export default function InstructionsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Ref</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Name</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Email</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Service</th>
@@ -56,9 +54,8 @@ export default function InstructionsPage() {
               </thead>
               <tbody>
                 {leads.map((lead) => {
-                  const answers = lead.answers as Record<string, any>
-                  const instructionDate = answers.instruction_submitted_at
-                    ? formatDate(answers.instruction_submitted_at)
+                  const instructionDate = lead.instruction_submitted_at
+                    ? formatDate(lead.instruction_submitted_at)
                     : '—'
 
                   return (
@@ -67,6 +64,13 @@ export default function InstructionsPage() {
                       onClick={() => setSelectedLead(lead)}
                       className="border-b border-border last:border-0 cursor-pointer hover:bg-muted/50 transition-colors"
                     >
+                      <td className="px-5 py-3 text-sm text-muted-foreground font-mono">
+                        {(() => {
+                          const quotes = (lead as unknown as Record<string, unknown>).quotes as { reference_code: string | null }[] | null
+                          const ref = quotes?.[0]?.reference_code
+                          return ref ? <span className="text-xs">{ref}</span> : <span className="text-xs text-muted-foreground/50">—</span>
+                        })()}
+                      </td>
                       <td className="px-5 py-3 text-sm font-medium text-foreground">{lead.full_name}</td>
                       <td className="px-5 py-3 text-sm text-muted-foreground">{lead.email}</td>
                       <td className="px-5 py-3 text-sm text-muted-foreground capitalize">
@@ -178,8 +182,8 @@ function InstructionDetailDialog({
               <div>
                 <span className="text-xs text-muted-foreground">Instruction Date</span>
                 <p className="font-medium text-foreground">
-                  {answers.instruction_submitted_at
-                    ? formatDate(answers.instruction_submitted_at)
+                  {lead.instruction_submitted_at
+                    ? formatDate(lead.instruction_submitted_at)
                     : '—'}
                 </p>
               </div>

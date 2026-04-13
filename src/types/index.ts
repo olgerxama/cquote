@@ -118,6 +118,7 @@ export interface Lead {
   discount_code_id: string | null;
   first_name: string | null;
   surname: string | null;
+  instruction_submitted_at: string | null;
 }
 
 export interface Quote {
