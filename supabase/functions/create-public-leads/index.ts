@@ -258,19 +258,23 @@ async function generateQuotePdfBase64(p: {
   }
 
   y -= 8
-  const totalsLabelX = right - 170
+  const totalsValueRight = right
+  const totalsValueLeft = right - 130
+  const totalsLabelRight = totalsValueLeft - 20
   const drawTotalRow = (label: string, value: string, useBold = false) => {
-    page.drawText(label, {
-      x: totalsLabelX,
-      y,
-      font: useBold ? bold : font,
-      size: useBold ? 16 : 13,
-      color: useBold ? navy : muted,
-    })
     const textFont = useBold ? bold : font
     const textSize = useBold ? 16 : 13
+    const labelWidth = textFont.widthOfTextAtSize(label, textSize)
+    const valueWidth = textFont.widthOfTextAtSize(value, textSize)
+    page.drawText(label, {
+      x: totalsLabelRight - labelWidth,
+      y,
+      font: textFont,
+      size: textSize,
+      color: useBold ? navy : muted,
+    })
     page.drawText(value, {
-      x: right - textFont.widthOfTextAtSize(value, textSize),
+      x: totalsValueRight - valueWidth,
       y,
       font: textFont,
       size: textSize,
@@ -281,7 +285,7 @@ async function generateQuotePdfBase64(p: {
 
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))
   drawTotalRow('VAT (20%)', formatCurrency(p.vatTotal))
-  page.drawLine({ start: { x: totalsLabelX, y: y + 8 }, end: { x: right, y: y + 8 }, color: navy, thickness: 1.5 })
+  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight, y: y + 8 }, color: navy, thickness: 1.5 })
   y -= 2
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
