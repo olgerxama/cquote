@@ -128,6 +128,7 @@ async function generateQuotePdfBase64(p: {
   leadName: string
   leadEmail: string
   serviceType: string
+  propertyValue?: number
   referenceCode?: string
   items: QuoteItemInput[]
   subtotal: number
@@ -142,121 +143,147 @@ async function generateQuotePdfBase64(p: {
   const serviceLabel = p.serviceType
     .replace(/_/g, ' & ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
+  const serviceLower = serviceLabel.toLowerCase()
   const dateStr = new Date().toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   })
-  const heading = 'Estimate'
+  const heading = 'QUOTE ESTIMATE'
 
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([595, 842])
-  const { width } = page.getSize()
+  const { width, height } = page.getSize()
   const font = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
-  const darkText = rgb(0.11, 0.11, 0.11)
-  const mutedText = rgb(0.42, 0.42, 0.42)
-  const border = rgb(0.87, 0.89, 0.91)
-  const left = 48
-  const right = width - 48
-  const amountColX = right - 80
-  const top = 800
+  const navy = rgb(0.118, 0.227, 0.373)
+  const dark = rgb(0.1, 0.1, 0.1)
+  const muted = rgb(0.52, 0.52, 0.52)
+  const border = rgb(0.88, 0.88, 0.88)
+  const rowBg = rgb(0.96, 0.96, 0.96)
+  const panelX = 34
+  const panelW = width - (panelX * 2)
+  const left = panelX + 26
+  const right = panelX + panelW - 26
 
-  page.drawText(p.firmName, { x: left, y: top, font: bold, size: 20, color: darkText })
-  page.drawText(heading, {
-    x: right - bold.widthOfTextAtSize(heading, 24),
-    y: top - 2,
-    font: bold,
-    size: 24,
-    color: darkText,
-  })
+  page.drawRectangle({ x: panelX, y: 34, width: panelW, height: height - 68, color: rgb(1, 1, 1) })
+
+  const headerY = 710
+  page.drawRectangle({ x: panelX, y: headerY, width: panelW, height: 110, color: navy })
+  page.drawText(p.firmName, { x: left, y: headerY + 72, font: bold, size: 24, color: rgb(1, 1, 1) })
   if (p.referenceCode) {
-    const refText = `Ref: ${p.referenceCode}`
+    const refText = p.referenceCode
     page.drawText(refText, {
-      x: right - font.widthOfTextAtSize(refText, 10),
-      y: top - 18,
+      x: left,
+      y: headerY + 36,
       font,
-      size: 10,
-      color: mutedText,
+      size: 12,
+      color: rgb(0.78, 0.84, 0.92),
     })
   }
+  page.drawText(heading, {
+    x: right - bold.widthOfTextAtSize(heading, 11),
+    y: headerY + 86,
+    font: bold,
+    size: 11,
+    color: rgb(0.72, 0.78, 0.86),
+  })
+  page.drawText(dateStr, {
+    x: right - font.widthOfTextAtSize(dateStr, 13),
+    y: headerY + 50,
+    font,
+    size: 13,
+    color: rgb(0.83, 0.87, 0.93),
+  })
 
-  let y = top - 38
-  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: border, thickness: 1 })
-  y -= 24
+  let y = headerY - 24
+  page.drawText(`Dear ${p.leadName},`, { x: left, y, font: bold, size: 12, color: dark })
+  y -= 30
+  const bodyLine1 = `Thank you for your ${serviceLower} enquiry. We have received your details and a member of`
+  const bodyLine2 = 'our team will be in touch shortly.'
+  page.drawText(bodyLine1, { x: left, y, font, size: 11, color: rgb(0.33, 0.33, 0.33) })
+  y -= 22
+  page.drawText(bodyLine2, { x: left, y, font, size: 11, color: rgb(0.33, 0.33, 0.33) })
 
-  page.drawText('Prepared for', { x: left, y, font: bold, size: 10, color: mutedText })
-  page.drawText('Service', { x: right - 170, y, font: bold, size: 10, color: mutedText })
+  y -= 30
+  page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
+  y -= 18
+  page.drawText('PREPARED FOR', { x: left, y, font: bold, size: 9, color: muted })
+  page.drawText('SERVICE', { x: right - 80, y, font: bold, size: 9, color: muted })
   y -= 16
-  page.drawText(p.leadName, { x: left, y, font, size: 12, color: darkText })
-  page.drawText(serviceLabel, { x: right - 170, y, font, size: 11, color: darkText })
+  page.drawText(p.leadName, { x: left, y, font, size: 14, color: dark })
+  page.drawText(serviceLabel, { x: right - font.widthOfTextAtSize(serviceLabel, 14), y, font, size: 14, color: dark })
   y -= 16
   if (p.leadEmail) {
-    page.drawText(p.leadEmail, { x: left, y, font, size: 10, color: mutedText })
+    page.drawText(p.leadEmail, { x: left, y, font, size: 10, color: rgb(0.09, 0.35, 0.82) })
   }
-  page.drawText(dateStr, { x: right - 170, y, font, size: 10, color: mutedText })
-  y -= 26
+  if (p.propertyValue != null) {
+    const prop = `Property value: ${formatCurrency(p.propertyValue)}`
+    page.drawText(prop, {
+      x: right - font.widthOfTextAtSize(prop, 10),
+      y,
+      font,
+      size: 10,
+      color: muted,
+    })
+  }
+  y -= 24
 
-  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: border, thickness: 1 })
+  page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
   y -= 16
-  page.drawText('Description', { x: left, y, font: bold, size: 10, color: mutedText })
-  page.drawText('Amount', { x: amountColX, y, font: bold, size: 10, color: mutedText })
-  y -= 10
-  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: border, thickness: 1 })
-  y -= 16
+  page.drawText('DESCRIPTION', { x: left, y, font: bold, size: 9, color: muted })
+  page.drawText('AMOUNT', { x: right - 60, y, font: bold, size: 9, color: muted })
+  y -= 18
 
+  let row = 0
   for (const item of p.items) {
     if (y < 140) break
     const desc = String(item.description || 'Item').slice(0, 68)
     const amt = Number(item.amount || 0)
     const isDiscount = amt < 0
     const amountText = `${isDiscount ? '−' : ''}${formatCurrency(Math.abs(amt))}`
-    page.drawText(desc, { x: left, y, font, size: 10, color: darkText })
+    if (row % 2 === 0) {
+      page.drawRectangle({ x: left - 10, y: y - 8, width: right - left + 20, height: 22, color: rowBg })
+    }
+    page.drawText(desc, { x: left + 4, y, font, size: 11, color: rgb(0.2, 0.2, 0.2) })
     page.drawText(amountText, {
       x: right - font.widthOfTextAtSize(amountText, 10),
       y,
       font,
       size: 10,
-      color: isDiscount ? rgb(0.08, 0.5, 0.27) : darkText,
+      color: isDiscount ? rgb(0.08, 0.5, 0.27) : rgb(0.25, 0.25, 0.25),
     })
     y -= 18
-    page.drawLine({ start: { x: left, y: y + 6 }, end: { x: right, y: y + 6 }, color: border, thickness: 0.6 })
+    row++
   }
 
-  y -= 4
-  const totalsLabelX = right - 150
+  y -= 8
+  const totalsLabelX = right - 170
   const drawTotalRow = (label: string, value: string, useBold = false) => {
     page.drawText(label, {
       x: totalsLabelX,
       y,
       font: useBold ? bold : font,
-      size: useBold ? 12 : 10,
-      color: useBold ? darkText : mutedText,
+      size: useBold ? 16 : 13,
+      color: useBold ? navy : muted,
     })
     const textFont = useBold ? bold : font
-    const textSize = useBold ? 12 : 10
+    const textSize = useBold ? 16 : 13
     page.drawText(value, {
       x: right - textFont.widthOfTextAtSize(value, textSize),
       y,
       font: textFont,
       size: textSize,
-      color: darkText,
+      color: useBold ? navy : rgb(0.2, 0.2, 0.2),
     })
-    y -= useBold ? 22 : 16
+    y -= useBold ? 26 : 20
   }
 
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))
-  drawTotalRow('VAT', formatCurrency(p.vatTotal))
-  page.drawLine({ start: { x: totalsLabelX, y: y + 6 }, end: { x: right, y: y + 6 }, color: border, thickness: 1 })
+  drawTotalRow('VAT (20%)', formatCurrency(p.vatTotal))
+  page.drawLine({ start: { x: totalsLabelX, y: y + 8 }, end: { x: right, y: y + 8 }, color: navy, thickness: 1.5 })
   y -= 2
-  drawTotalRow('Grand Total', formatCurrency(p.grandTotal), true)
-
-  const footerY = 56
-  page.drawLine({ start: { x: left, y: footerY + 14 }, end: { x: right, y: footerY + 14 }, color: border, thickness: 1 })
-  page.drawText(
-    'This is an estimate only and may be subject to change. Please contact us for a full breakdown.',
-    { x: left, y: footerY, font, size: 8, color: mutedText },
-  )
+  drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
   const bytes = await pdf.save()
   let binary = ''
@@ -694,6 +721,7 @@ Deno.serve(async (req) => {
               leadName: existingLead.full_name,
               leadEmail: existingLead.email,
               serviceType: existingLead.service_type,
+              propertyValue: existingLead.property_value ? Number(existingLead.property_value) : undefined,
               referenceCode: existingQuote?.reference_code || undefined,
               items: existingItems as { description: string; amount: number; is_vatable?: boolean }[],
               subtotal: Number(notifyTotals.subtotal || 0),
@@ -875,6 +903,7 @@ Deno.serve(async (req) => {
             leadName: lead.full_name,
             leadEmail: lead.email,
             serviceType: lead.service_type,
+            propertyValue: lead.property_value ? Number(lead.property_value) : undefined,
             referenceCode: referenceCode || undefined,
             items: quoteItems,
             subtotal: totals.subtotal || 0,
