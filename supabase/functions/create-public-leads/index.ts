@@ -251,124 +251,200 @@ function customerThankYouHtml(p: {
   instructionLink?: string
   hasPdf: boolean
 }): string {
-  const svcLabel = p.serviceType.replace(/_/g, ' &amp; ')
-  const fmtGBP = (n: number) => '&pound;' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  const svcLabel = p.serviceType
+    .replace(/_/g, ' & ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+  const fmt = (n: number) => {
+    const s = Number(n).toFixed(2)
+    return '£' + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
+  const d = new Date()
+  const dateStr = d.toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  })
 
-  // Build line items rows (matching desktop invoice design)
-  let itemsHtml = ''
+  // Line item rows — keep styles SHORT to avoid QP encoding bugs
+  let rows = ''
   if (p.items && p.items.length > 0) {
-    const rows = p.items.map((item, i) => {
-      const bg = i % 2 === 0 ? '#f9fafb' : '#ffffff'
-      return `<tr style="background:${bg};">
-        <td style="padding:10px 16px;font-size:13px;color:#333;border-bottom:1px solid #f0f0f0;">${item.description}</td>
-        <td style="padding:10px 16px;font-size:13px;color:#333;text-align:right;border-bottom:1px solid #f0f0f0;font-variant-numeric:tabular-nums;">${fmtGBP(item.amount)}</td>
-      </tr>`
-    }).join('')
-
-    itemsHtml = `
-    <table style="width:100%;border-collapse:collapse;margin-top:0;">
-      <thead>
-        <tr style="border-bottom:2px solid #1e3a5f;">
-          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Description</th>
-          <th style="padding:10px 16px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Amount</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`
+    for (let i = 0; i < p.items.length; i++) {
+      const it = p.items[i]
+      const bg = i % 2 === 0 ? '#f9fafb' : '#fff'
+      rows += '<tr bgcolor="' + bg + '">'
+      rows += '<td style="padding:10px 16px;'
+      rows += 'font-size:13px;color:#333">'
+      rows += it.description + '</td>'
+      rows += '<td align="right" style="padding:10px 16px;'
+      rows += 'font-size:13px;color:#333">'
+      rows += fmt(it.amount) + '</td>'
+      rows += '</tr>\n'
+    }
   }
 
-  // Totals section
-  let totalsHtml = ''
+  // Build full HTML using concatenation (short lines)
+  let h = ''
+  h += '<!DOCTYPE html><html><head>'
+  h += '<meta charset="utf-8">'
+  h += '<meta name="viewport" content="width=device-width">'
+  h += '</head><body style="margin:0;padding:0;'
+  h += 'background:#f5f5f5;'
+  h += 'font-family:Arial,sans-serif;color:#333">\n'
+
+  // Wrapper
+  h += '<table width="100%" cellpadding="0" cellspacing="0">'
+  h += '<tr><td align="center" style="padding:20px">\n'
+  h += '<table width="600" cellpadding="0" cellspacing="0" '
+  h += 'style="background:#fff;border:1px solid #e5e5e5;'
+  h += 'border-radius:8px;overflow:hidden">\n'
+
+  // — Header band —
+  h += '<tr><td bgcolor="#1e3a5f" style="padding:24px 28px">\n'
+  h += '<table width="100%" cellpadding="0" cellspacing="0"><tr>\n'
+  h += '<td valign="top">'
+  h += '<div style="color:#fff;font-size:20px;'
+  h += 'font-weight:700">' + p.firmName + '</div>\n'
+  if (p.referenceCode) {
+    h += '<div style="color:rgba(255,255,255,0.7);'
+    h += 'font-size:14px;margin-top:4px;'
+    h += 'font-family:monospace">'
+    h += p.referenceCode + '</div>\n'
+  }
+  h += '</td>\n'
+  h += '<td valign="top" align="right">'
+  h += '<div style="font-size:11px;font-weight:600;'
+  h += 'text-transform:uppercase;'
+  h += 'color:rgba(255,255,255,0.5)">Quote Estimate</div>\n'
+  h += '<div style="font-size:13px;margin-top:4px;'
+  h += 'color:rgba(255,255,255,0.7)">' + dateStr + '</div>\n'
+  h += '</td></tr></table>\n'
+  h += '</td></tr>\n'
+
+  // — Thank you text —
+  h += '<tr><td style="padding:24px 28px;'
+  h += 'border-bottom:1px solid #e5e5e5">\n'
+  h += '<p style="margin:0 0 8px;font-size:15px;'
+  h += 'font-weight:600;color:#111">Dear ' + p.leadName + ',</p>\n'
+  h += '<p style="margin:0;font-size:14px;'
+  h += 'line-height:1.6;color:#555">'
+  h += 'Thank you for your ' + svcLabel.toLowerCase()
+  h += ' enquiry. We have received your details and '
+  h += 'a member of our team will be in touch shortly.</p>\n'
+  h += '</td></tr>\n'
+
+  // — Info grid —
+  h += '<tr><td style="padding:20px 28px;'
+  h += 'border-bottom:1px solid #e5e5e5">\n'
+  h += '<table width="100%" cellpadding="0" cellspacing="0"><tr>\n'
+  h += '<td valign="top">'
+  h += '<div style="font-size:11px;font-weight:600;'
+  h += 'text-transform:uppercase;color:#888;'
+  h += 'margin-bottom:4px">Prepared For</div>\n'
+  h += '<div style="font-size:14px;font-weight:500;'
+  h += 'color:#111">' + p.leadName + '</div>\n'
+  h += '<div style="font-size:12px;color:#888">'
+  h += p.leadEmail + '</div>\n'
+  h += '</td>\n'
+  h += '<td valign="top" align="right">'
+  h += '<div style="font-size:11px;font-weight:600;'
+  h += 'text-transform:uppercase;color:#888;'
+  h += 'margin-bottom:4px">Service</div>\n'
+  h += '<div style="font-size:14px;font-weight:500;'
+  h += 'color:#111">' + svcLabel + '</div>\n'
+  if (p.propertyValue) {
+    h += '<div style="font-size:12px;color:#888">'
+    h += 'Property value: ' + fmt(p.propertyValue) + '</div>\n'
+  }
+  h += '</td></tr></table>\n'
+  h += '</td></tr>\n'
+
+  // — Line items —
+  if (rows) {
+    h += '<tr><td style="padding:16px 16px 0">\n'
+    h += '<table width="100%" cellpadding="0" cellspacing="0">\n'
+    h += '<tr style="border-bottom:2px solid #1e3a5f">'
+    h += '<th align="left" style="padding:8px 16px;'
+    h += 'font-size:11px;font-weight:700;'
+    h += 'text-transform:uppercase;color:#888">'
+    h += 'Description</th>\n'
+    h += '<th align="right" style="padding:8px 16px;'
+    h += 'font-size:11px;font-weight:700;'
+    h += 'text-transform:uppercase;color:#888">'
+    h += 'Amount</th>\n'
+    h += '</tr>\n'
+    h += rows
+    h += '</table>\n'
+    h += '</td></tr>\n'
+  }
+
+  // — Totals —
   if (p.grandTotal != null) {
-    totalsHtml = `
-    <table style="width:100%;border-collapse:collapse;margin-top:16px;">
-      <tbody>
-        ${p.subtotal != null ? `<tr>
-          <td style="padding:6px 16px;text-align:right;font-size:13px;color:#6b7280;">Subtotal</td>
-          <td style="padding:6px 16px;text-align:right;font-size:13px;color:#333;width:120px;font-variant-numeric:tabular-nums;">${fmtGBP(p.subtotal)}</td>
-        </tr>` : ''}
-        ${p.vatTotal != null ? `<tr>
-          <td style="padding:6px 16px;text-align:right;font-size:13px;color:#6b7280;">VAT (20%)</td>
-          <td style="padding:6px 16px;text-align:right;font-size:13px;color:#333;width:120px;font-variant-numeric:tabular-nums;">${fmtGBP(p.vatTotal)}</td>
-        </tr>` : ''}
-        <tr style="border-top:2px solid #1e3a5f;">
-          <td style="padding:10px 16px;text-align:right;font-size:16px;font-weight:700;color:#1e3a5f;">Total (inc. VAT)</td>
-          <td style="padding:10px 16px;text-align:right;font-size:18px;font-weight:700;color:#1e3a5f;width:120px;font-variant-numeric:tabular-nums;">${fmtGBP(p.grandTotal)}</td>
-        </tr>
-      </tbody>
-    </table>`
+    h += '<tr><td style="padding:8px 16px 20px">\n'
+    h += '<table width="100%" cellpadding="0" cellspacing="0">\n'
+    if (p.subtotal != null) {
+      h += '<tr><td align="right" style="padding:6px 16px;'
+      h += 'font-size:13px;color:#888">Subtotal</td>\n'
+      h += '<td align="right" width="120" style="padding:6px 16px;'
+      h += 'font-size:13px;color:#333">'
+      h += fmt(p.subtotal) + '</td></tr>\n'
+    }
+    if (p.vatTotal != null) {
+      h += '<tr><td align="right" style="padding:6px 16px;'
+      h += 'font-size:13px;color:#888">VAT (20%)</td>\n'
+      h += '<td align="right" width="120" style="padding:6px 16px;'
+      h += 'font-size:13px;color:#333">'
+      h += fmt(p.vatTotal) + '</td></tr>\n'
+    }
+    h += '<tr style="border-top:2px solid #1e3a5f">'
+    h += '<td align="right" style="padding:10px 16px;'
+    h += 'font-size:16px;font-weight:700;'
+    h += 'color:#1e3a5f">Total (inc. VAT)</td>\n'
+    h += '<td align="right" width="120" style="padding:10px 16px;'
+    h += 'font-size:18px;font-weight:700;'
+    h += 'color:#1e3a5f">'
+    h += fmt(p.grandTotal) + '</td></tr>\n'
+    h += '</table>\n'
+    h += '</td></tr>\n'
   }
 
-  const pdfNote = p.hasPdf
-    ? `<div style="background:#f0f4f8;border-radius:8px;padding:14px 18px;margin:20px 16px;font-size:13px;color:#555;">
-        <strong style="color:#1e3a5f;">PDF Attached</strong> — Your detailed quote estimate is attached to this email.
-       </div>`
-    : ''
-  const cta = p.instructionLink
-    ? `<div style="text-align:center;margin:28px 0;">
-        <a href="${p.instructionLink}" style="display:inline-block;background:#1e3a5f;color:#ffffff;padding:14px 36px;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">Instruct Us to Proceed</a>
-       </div>`
-    : ''
+  // — PDF note —
+  if (p.hasPdf) {
+    h += '<tr><td style="padding:0 24px 8px">\n'
+    h += '<div style="background:#f0f4f8;'
+    h += 'border-radius:6px;padding:12px 16px;'
+    h += 'font-size:13px;color:#555">'
+    h += '<strong style="color:#1e3a5f">PDF Attached</strong>'
+    h += ' &mdash; A detailed quote is attached.</div>\n'
+    h += '</td></tr>\n'
+  }
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:0 auto;padding:20px;background:#f5f5f5;color:#333;">
+  // — CTA button —
+  if (p.instructionLink) {
+    h += '<tr><td align="center" style="padding:20px 28px">\n'
+    h += '<a href="' + p.instructionLink + '" style="'
+    h += 'display:inline-block;background:#1e3a5f;'
+    h += 'color:#fff;padding:14px 36px;'
+    h += 'text-decoration:none;border-radius:8px;'
+    h += 'font-weight:600;font-size:15px">'
+    h += 'Instruct Us to Proceed</a>\n'
+    h += '</td></tr>\n'
+  }
 
-<!-- Invoice card -->
-<div style="background:#ffffff;border-radius:12px;border:1px solid #e5e5e5;overflow:hidden;">
+  // — Footer —
+  h += '<tr><td bgcolor="#f9fafb" style="padding:14px 28px;'
+  h += 'border-top:1px solid #e5e5e5">\n'
+  h += '<p style="margin:0;font-size:11px;'
+  h += 'color:#999;font-style:italic">'
+  h += 'This is an estimate only and may be subject '
+  h += 'to change.</p>\n'
+  h += '</td></tr>\n'
 
-  <!-- Header band (matches desktop) -->
-  <div style="background:#1e3a5f;padding:24px 32px;">
-    <table style="width:100%;"><tr>
-      <td style="vertical-align:top;">
-        <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">${p.firmName}</h1>
-        ${p.referenceCode ? `<p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:14px;font-family:monospace;">${p.referenceCode}</p>` : ''}
-      </td>
-      <td style="vertical-align:top;text-align:right;">
-        <span style="font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.5);">Quote Estimate</span>
-        <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,0.7);">${dateStr}</p>
-      </td>
-    </tr></table>
-  </div>
-
-  <!-- Info grid (matches desktop) -->
-  <div style="padding:20px 32px;border-bottom:1px solid #e5e5e5;">
-    <table style="width:100%;"><tr>
-      <td style="vertical-align:top;">
-        <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Prepared For</p>
-        <p style="margin:0;font-size:14px;font-weight:500;color:#111;">${p.leadName}</p>
-        <p style="margin:2px 0 0;font-size:12px;color:#6b7280;">${p.leadEmail}</p>
-      </td>
-      <td style="vertical-align:top;text-align:right;">
-        <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Service</p>
-        <p style="margin:0;font-size:14px;font-weight:500;color:#111;">${svcLabel}</p>
-        ${p.propertyValue ? `<p style="margin:2px 0 0;font-size:12px;color:#6b7280;">Property value: ${fmtGBP(p.propertyValue)}</p>` : ''}
-      </td>
-    </tr></table>
-  </div>
-
-  <!-- Line items table -->
-  <div style="padding:16px 16px 0 16px;">
-    ${itemsHtml}
-  </div>
-
-  <!-- Totals -->
-  <div style="padding:0 16px 20px 16px;">
-    ${totalsHtml}
-  </div>
-
-  ${pdfNote}
-  ${cta}
-
-  <!-- Footer disclaimer -->
-  <div style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e5e5;">
-    <p style="margin:0;font-size:11px;color:#999;font-style:italic;">This is an estimate only and may be subject to change. Please contact us for a full breakdown.</p>
-  </div>
-
-</div>
-
-<p style="text-align:center;font-size:11px;color:#999;margin-top:16px;">Powered by ConveyQuote</p>
-</body></html>`
+  // Close wrapper
+  h += '</table>\n'
+  h += '<p style="text-align:center;font-size:11px;'
+  h += 'color:#999;margin-top:14px">'
+  h += 'Powered by ConveyQuote</p>\n'
+  h += '</td></tr></table>\n'
+  h += '</body></html>'
+  return h
 }
 
 function notificationEmailHtml(p: {
@@ -380,30 +456,103 @@ function notificationEmailHtml(p: {
   status: string
   referenceCode?: string
 }): string {
-  const svcLabel = p.serviceType.replace(/_/g, ' & ')
-  const statusColor = p.status === 'review' ? '#d97706' : '#059669'
-  const statusLabel = p.status === 'review' ? 'Manual Review' : 'New Lead'
-  const fmtGBP = (n: number) => '&pound;' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;background:#f5f5f5;color:#333;">
-<div style="background:#1e3a5f;padding:24px 32px;">
-  <h1 style="margin:0;color:#ffffff;font-size:18px;font-weight:700;">New Enquiry Received</h1>
-  <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px;">${p.firmName}</p>
-</div>
-<div style="background:#ffffff;padding:28px 32px;border:1px solid #e5e5e5;border-top:none;">
-  <div style="display:inline-block;background:${statusColor};color:white;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:20px;">${statusLabel}</div>
-  <table style="width:100%;border-collapse:collapse;">
-    ${p.referenceCode ? `<tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;width:120px;">Reference</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-weight:600;font-family:monospace;color:#1e3a5f;">${p.referenceCode}</td></tr>` : ''}
-    <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;width:120px;">Name</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-weight:600;">${p.leadName}</td></tr>
-    <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;">Email</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;"><a href="mailto:${p.leadEmail}" style="color:#1e3a5f;">${p.leadEmail}</a></td></tr>
-    <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;">Service</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;">${svcLabel}</td></tr>
-    <tr><td style="padding:10px 0;color:#888;font-size:13px;">Property Value</td><td style="padding:10px 0;font-weight:600;">${fmtGBP(Number(p.propertyValue))}</td></tr>
-  </table>
-</div>
-<div style="padding:20px 32px;text-align:center;">
-  <p style="margin:0;font-size:12px;color:#999;">Log in to your ConveyQuote dashboard to manage this lead.</p>
-</div>
-</body></html>`
+  const svc = p.serviceType.replace(/_/g, ' & ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+  const sc = p.status === 'review' ? '#d97706' : '#059669'
+  const sl = p.status === 'review' ? 'Manual Review' : 'New Lead'
+  const fmt = (n: number) => {
+    const s = Number(n).toFixed(2)
+    return '£' + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
+
+  let h = ''
+  h += '<!DOCTYPE html><html><head>'
+  h += '<meta charset="utf-8"></head>\n'
+  h += '<body style="margin:0;padding:0;'
+  h += 'background:#f5f5f5;'
+  h += 'font-family:Arial,sans-serif;color:#333">\n'
+  h += '<table width="100%" cellpadding="0" cellspacing="0">'
+  h += '<tr><td align="center" style="padding:20px">\n'
+  h += '<table width="600" cellpadding="0" cellspacing="0" '
+  h += 'style="background:#fff;border:1px solid #e5e5e5">\n'
+
+  // Header
+  h += '<tr><td bgcolor="#1e3a5f" style="padding:22px 28px">\n'
+  h += '<div style="color:#fff;font-size:18px;'
+  h += 'font-weight:700">New Enquiry Received</div>\n'
+  h += '<div style="color:rgba(255,255,255,0.7);'
+  h += 'font-size:13px;margin-top:4px">'
+  h += p.firmName + '</div>\n'
+  h += '</td></tr>\n'
+
+  // Body
+  h += '<tr><td style="padding:24px 28px">\n'
+  h += '<div style="display:inline-block;background:'
+  h += sc + ';color:#fff;padding:4px 12px;'
+  h += 'border-radius:20px;font-size:12px;'
+  h += 'font-weight:600;margin-bottom:16px">'
+  h += sl + '</div>\n'
+
+  h += '<table width="100%" cellpadding="0" cellspacing="0">\n'
+  if (p.referenceCode) {
+    h += '<tr>'
+    h += '<td style="padding:10px 0;'
+    h += 'border-bottom:1px solid #f0f0f0;'
+    h += 'color:#888;font-size:13px;width:120px">'
+    h += 'Reference</td>\n'
+    h += '<td style="padding:10px 0;'
+    h += 'border-bottom:1px solid #f0f0f0;'
+    h += 'font-weight:600;font-family:monospace;'
+    h += 'color:#1e3a5f">' + p.referenceCode + '</td>'
+    h += '</tr>\n'
+  }
+  h += '<tr>'
+  h += '<td style="padding:10px 0;'
+  h += 'border-bottom:1px solid #f0f0f0;'
+  h += 'color:#888;font-size:13px">Name</td>\n'
+  h += '<td style="padding:10px 0;'
+  h += 'border-bottom:1px solid #f0f0f0;'
+  h += 'font-weight:600">' + p.leadName + '</td>'
+  h += '</tr>\n'
+  h += '<tr>'
+  h += '<td style="padding:10px 0;'
+  h += 'border-bottom:1px solid #f0f0f0;'
+  h += 'color:#888;font-size:13px">Email</td>\n'
+  h += '<td style="padding:10px 0;'
+  h += 'border-bottom:1px solid #f0f0f0">'
+  h += '<a href="mailto:' + p.leadEmail + '" '
+  h += 'style="color:#1e3a5f">'
+  h += p.leadEmail + '</a></td>'
+  h += '</tr>\n'
+  h += '<tr>'
+  h += '<td style="padding:10px 0;'
+  h += 'border-bottom:1px solid #f0f0f0;'
+  h += 'color:#888;font-size:13px">Service</td>\n'
+  h += '<td style="padding:10px 0;'
+  h += 'border-bottom:1px solid #f0f0f0">'
+  h += svc + '</td>'
+  h += '</tr>\n'
+  h += '<tr>'
+  h += '<td style="padding:10px 0;'
+  h += 'color:#888;font-size:13px">Property Value</td>\n'
+  h += '<td style="padding:10px 0;font-weight:600">'
+  h += fmt(Number(p.propertyValue)) + '</td>'
+  h += '</tr>\n'
+  h += '</table>\n'
+
+  h += '</td></tr>\n'
+
+  // Footer
+  h += '<tr><td align="center" style="padding:18px 28px">\n'
+  h += '<p style="margin:0;font-size:12px;color:#999">'
+  h += 'Log in to your ConveyQuote dashboard '
+  h += 'to manage this lead.</p>\n'
+  h += '</td></tr>\n'
+
+  h += '</table>\n'
+  h += '</td></tr></table>\n'
+  h += '</body></html>'
+  return h
 }
 
 Deno.serve(async (req) => {
