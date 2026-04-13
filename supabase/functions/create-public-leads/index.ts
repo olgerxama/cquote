@@ -263,7 +263,7 @@ async function generateQuotePdfBase64(p: {
   const totalsLabelRight = totalsValueLeft - 20
   const drawTotalRow = (label: string, value: string, useBold = false) => {
     const textFont = useBold ? bold : font
-    const textSize = useBold ? 16 : 13
+    const textSize = useBold ? 12.5 : 9.5
     const labelWidth = textFont.widthOfTextAtSize(label, textSize)
     const valueWidth = textFont.widthOfTextAtSize(value, textSize)
     page.drawText(label, {
@@ -278,9 +278,9 @@ async function generateQuotePdfBase64(p: {
       y,
       font: textFont,
       size: textSize,
-      color: useBold ? navy : rgb(0.2, 0.2, 0.2),
+      color: useBold ? navy : rgb(0.25, 0.25, 0.25),
     })
-    y -= useBold ? 26 : 20
+    y -= useBold ? 24 : 18
   }
 
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))

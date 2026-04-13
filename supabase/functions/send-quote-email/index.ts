@@ -197,12 +197,8 @@ async function generateQuotePdfBase64(p: {
   let y = headerY - 24
   page.drawText(`Dear ${p.leadName},`, { x: left, y, font: bold, size: 12, color: dark })
   y -= 30
-  const bodyLine1 = p.documentType === 'invoice'
-    ? `Thank you for your ${serviceLower} enquiry. Please find your invoice attached below.`
-    : `Thank you for your ${serviceLower} enquiry. We have received your details and a member of`
-  const bodyLine2 = p.documentType === 'invoice'
-    ? 'If you have any questions, please contact us.'
-    : 'our team will be in touch shortly.'
+  const bodyLine1 = `Thank you for your ${serviceLower} enquiry. We have received your details and a member of`
+  const bodyLine2 = 'our team will be in touch shortly.'
   page.drawText(bodyLine1, { x: left, y, font, size: 11, color: rgb(0.33, 0.33, 0.33) })
   y -= 22
   page.drawText(bodyLine2, { x: left, y, font, size: 11, color: rgb(0.33, 0.33, 0.33) })
@@ -263,7 +259,7 @@ async function generateQuotePdfBase64(p: {
   const totalsLabelRight = totalsValueLeft - 20
   const drawTotalRow = (label: string, value: string, useBold = false) => {
     const textFont = useBold ? bold : font
-    const textSize = useBold ? 16 : 13
+    const textSize = useBold ? 12.5 : 9.5
     const labelWidth = textFont.widthOfTextAtSize(label, textSize)
     const valueWidth = textFont.widthOfTextAtSize(value, textSize)
     page.drawText(label, {
@@ -278,9 +274,9 @@ async function generateQuotePdfBase64(p: {
       y,
       font: textFont,
       size: textSize,
-      color: useBold ? navy : rgb(0.2, 0.2, 0.2),
+      color: useBold ? navy : rgb(0.25, 0.25, 0.25),
     })
-    y -= useBold ? 26 : 20
+    y -= useBold ? 24 : 18
   }
 
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))
