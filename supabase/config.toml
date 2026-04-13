@@ -41,7 +41,7 @@ enabled = true
 # Public-facing edge functions: callable anonymously by visitors of the
 # public quote form. JWT verification must be off so the function can be
 # invoked without a logged-in user.
-[functions.create-public-lead]
+[functions.create-public-leads]
 verify_jwt = false
 
 [functions.submit-instruction]

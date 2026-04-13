@@ -54,7 +54,7 @@ export default function PublicQuotePage() {
   const [discountInput, setDiscountInput] = useState('')
   const [validatedDiscount, setValidatedDiscount] = useState<DiscountCode | null>(null)
   const [quoteResult, setQuoteResult] = useState<ReturnType<typeof calculateQuoteWithFallback> | null>(null)
-  const [, setLeadRef] = useState<string | null>(null)
+  const [referenceCode, setReferenceCode] = useState<string | null>(null)
 
   // Load firm
   const { data: firm, isLoading: firmLoading } = useQuery({
@@ -253,14 +253,14 @@ export default function PublicQuotePage() {
       }
 
       setQuoteResult(result)
-      setLeadRef(data?.instructionRef || data?.id || null)
+      setReferenceCode(data?.referenceCode || null)
       setSubmitted(true)
 
       // Fire email notification via edge function (fire-and-forget).
       // The RPC only creates data — emails are sent by the edge function.
       // This is non-blocking: if it fails, the lead is already saved.
       if (data?.id) {
-        supabase.functions.invoke('create-public-lead', {
+        supabase.functions.invoke('create-public-leads', {
           body: { notifyLeadId: data.id, firmId: firm.id },
         }).then(({ error: fnErr }) => {
           if (fnErr) console.warn('Email notification failed (lead still saved):', fnErr)
@@ -271,7 +271,7 @@ export default function PublicQuotePage() {
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error('create-public-lead RPC failed:', err)
+      console.error('create-public-leads RPC failed:', err)
       toast.error(`Failed to submit: ${message}`)
       setSubmitting(false)
       return
@@ -349,6 +349,9 @@ export default function PublicQuotePage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="text-lg font-bold text-white">{firm.name}</h2>
+                    {referenceCode && (
+                      <p className="text-sm text-white/70 mt-1 font-mono">{referenceCode}</p>
+                    )}
                   </div>
                   <div className="text-right">
                     <span className="text-xs font-semibold tracking-wider text-white/60 uppercase">Quote Estimate</span>

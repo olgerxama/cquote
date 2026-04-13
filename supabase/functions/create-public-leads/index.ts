@@ -240,25 +240,68 @@ async function generateQuotePdfBase64(p: {
 function customerThankYouHtml(p: {
   firmName: string
   leadName: string
+  leadEmail: string
   serviceType: string
-  grandTotal?: number
+  propertyValue?: number
   referenceCode?: string
+  items?: { description: string; amount: number; is_vatable?: boolean }[]
+  subtotal?: number
+  vatTotal?: number
+  grandTotal?: number
   instructionLink?: string
   hasPdf: boolean
 }): string {
   const svcLabel = p.serviceType.replace(/_/g, ' &amp; ')
-  const refBlock = p.referenceCode
-    ? `<tr><td style="padding:6px 0;color:#888;font-size:13px;">Reference</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#1e3a5f;">${p.referenceCode}</td></tr>`
-    : ''
-  const totalBlock = p.grandTotal != null
-    ? `<tr><td style="padding:6px 0;color:#888;font-size:13px;">Service</td><td style="padding:6px 0;text-align:right;color:#333;">${svcLabel}</td></tr>
-       ${refBlock}
-       <tr><td colspan="2" style="padding:0;"><div style="border-top:2px solid #1e3a5f;margin:12px 0;"></div></td></tr>
-       <tr><td style="padding:6px 0;font-size:18px;font-weight:700;color:#1e3a5f;">Estimated Total</td><td style="padding:6px 0;text-align:right;font-size:22px;font-weight:700;color:#1e3a5f;">&pound;${p.grandTotal.toFixed(2)}</td></tr>
-       <tr><td colspan="2" style="padding:0 0 4px;color:#999;font-size:11px;">Including VAT</td></tr>`
-    : ''
+  const fmtGBP = (n: number) => '&pound;' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+
+  // Build line items rows (matching desktop invoice design)
+  let itemsHtml = ''
+  if (p.items && p.items.length > 0) {
+    const rows = p.items.map((item, i) => {
+      const bg = i % 2 === 0 ? '#f9fafb' : '#ffffff'
+      return `<tr style="background:${bg};">
+        <td style="padding:10px 16px;font-size:13px;color:#333;border-bottom:1px solid #f0f0f0;">${item.description}</td>
+        <td style="padding:10px 16px;font-size:13px;color:#333;text-align:right;border-bottom:1px solid #f0f0f0;font-variant-numeric:tabular-nums;">${fmtGBP(item.amount)}</td>
+      </tr>`
+    }).join('')
+
+    itemsHtml = `
+    <table style="width:100%;border-collapse:collapse;margin-top:0;">
+      <thead>
+        <tr style="border-bottom:2px solid #1e3a5f;">
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Description</th>
+          <th style="padding:10px 16px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Amount</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`
+  }
+
+  // Totals section
+  let totalsHtml = ''
+  if (p.grandTotal != null) {
+    totalsHtml = `
+    <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+      <tbody>
+        ${p.subtotal != null ? `<tr>
+          <td style="padding:6px 16px;text-align:right;font-size:13px;color:#6b7280;">Subtotal</td>
+          <td style="padding:6px 16px;text-align:right;font-size:13px;color:#333;width:120px;font-variant-numeric:tabular-nums;">${fmtGBP(p.subtotal)}</td>
+        </tr>` : ''}
+        ${p.vatTotal != null ? `<tr>
+          <td style="padding:6px 16px;text-align:right;font-size:13px;color:#6b7280;">VAT (20%)</td>
+          <td style="padding:6px 16px;text-align:right;font-size:13px;color:#333;width:120px;font-variant-numeric:tabular-nums;">${fmtGBP(p.vatTotal)}</td>
+        </tr>` : ''}
+        <tr style="border-top:2px solid #1e3a5f;">
+          <td style="padding:10px 16px;text-align:right;font-size:16px;font-weight:700;color:#1e3a5f;">Total (inc. VAT)</td>
+          <td style="padding:10px 16px;text-align:right;font-size:18px;font-weight:700;color:#1e3a5f;width:120px;font-variant-numeric:tabular-nums;">${fmtGBP(p.grandTotal)}</td>
+        </tr>
+      </tbody>
+    </table>`
+  }
+
   const pdfNote = p.hasPdf
-    ? `<div style="background:#f0f4f8;border-radius:8px;padding:14px 18px;margin:20px 0;font-size:13px;color:#555;">
+    ? `<div style="background:#f0f4f8;border-radius:8px;padding:14px 18px;margin:20px 16px;font-size:13px;color:#555;">
         <strong style="color:#1e3a5f;">PDF Attached</strong> — Your detailed quote estimate is attached to this email.
        </div>`
     : ''
@@ -267,22 +310,64 @@ function customerThankYouHtml(p: {
         <a href="${p.instructionLink}" style="display:inline-block;background:#1e3a5f;color:#ffffff;padding:14px 36px;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">Instruct Us to Proceed</a>
        </div>`
     : ''
+
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;background:#f5f5f5;color:#333;">
-<div style="background:#1e3a5f;padding:28px 32px;">
-  <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">${p.firmName}</h1>
-</div>
-<div style="background:#ffffff;padding:32px;border:1px solid #e5e5e5;border-top:none;">
-  <p style="margin:0 0 6px;font-size:15px;">Dear ${p.leadName},</p>
-  <p style="margin:0 0 24px;color:#555;font-size:14px;line-height:1.6;">Thank you for your ${svcLabel.toLowerCase()} enquiry. We have received your details and a member of our team will be in touch shortly to discuss the next steps.</p>
-  ${totalBlock ? `<table style="width:100%;border-collapse:collapse;">${totalBlock}</table>` : ''}
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:0 auto;padding:20px;background:#f5f5f5;color:#333;">
+
+<!-- Invoice card -->
+<div style="background:#ffffff;border-radius:12px;border:1px solid #e5e5e5;overflow:hidden;">
+
+  <!-- Header band (matches desktop) -->
+  <div style="background:#1e3a5f;padding:24px 32px;">
+    <table style="width:100%;"><tr>
+      <td style="vertical-align:top;">
+        <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">${p.firmName}</h1>
+        ${p.referenceCode ? `<p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:14px;font-family:monospace;">${p.referenceCode}</p>` : ''}
+      </td>
+      <td style="vertical-align:top;text-align:right;">
+        <span style="font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.5);">Quote Estimate</span>
+        <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,0.7);">${dateStr}</p>
+      </td>
+    </tr></table>
+  </div>
+
+  <!-- Info grid (matches desktop) -->
+  <div style="padding:20px 32px;border-bottom:1px solid #e5e5e5;">
+    <table style="width:100%;"><tr>
+      <td style="vertical-align:top;">
+        <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Prepared For</p>
+        <p style="margin:0;font-size:14px;font-weight:500;color:#111;">${p.leadName}</p>
+        <p style="margin:2px 0 0;font-size:12px;color:#6b7280;">${p.leadEmail}</p>
+      </td>
+      <td style="vertical-align:top;text-align:right;">
+        <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Service</p>
+        <p style="margin:0;font-size:14px;font-weight:500;color:#111;">${svcLabel}</p>
+        ${p.propertyValue ? `<p style="margin:2px 0 0;font-size:12px;color:#6b7280;">Property value: ${fmtGBP(p.propertyValue)}</p>` : ''}
+      </td>
+    </tr></table>
+  </div>
+
+  <!-- Line items table -->
+  <div style="padding:16px 16px 0 16px;">
+    ${itemsHtml}
+  </div>
+
+  <!-- Totals -->
+  <div style="padding:0 16px 20px 16px;">
+    ${totalsHtml}
+  </div>
+
   ${pdfNote}
   ${cta}
+
+  <!-- Footer disclaimer -->
+  <div style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e5e5;">
+    <p style="margin:0;font-size:11px;color:#999;font-style:italic;">This is an estimate only and may be subject to change. Please contact us for a full breakdown.</p>
+  </div>
+
 </div>
-<div style="padding:20px 32px;text-align:center;font-size:11px;color:#999;">
-  <p style="margin:0 0 4px;">This is an estimate only and may be subject to change.</p>
-  <p style="margin:0;">Powered by ConveyQuote</p>
-</div>
+
+<p style="text-align:center;font-size:11px;color:#999;margin-top:16px;">Powered by ConveyQuote</p>
 </body></html>`
 }
 
@@ -293,10 +378,12 @@ function notificationEmailHtml(p: {
   serviceType: string
   propertyValue: number
   status: string
+  referenceCode?: string
 }): string {
   const svcLabel = p.serviceType.replace(/_/g, ' & ')
   const statusColor = p.status === 'review' ? '#d97706' : '#059669'
   const statusLabel = p.status === 'review' ? 'Manual Review' : 'New Lead'
+  const fmtGBP = (n: number) => '&pound;' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;background:#f5f5f5;color:#333;">
 <div style="background:#1e3a5f;padding:24px 32px;">
@@ -306,10 +393,11 @@ function notificationEmailHtml(p: {
 <div style="background:#ffffff;padding:28px 32px;border:1px solid #e5e5e5;border-top:none;">
   <div style="display:inline-block;background:${statusColor};color:white;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:20px;">${statusLabel}</div>
   <table style="width:100%;border-collapse:collapse;">
+    ${p.referenceCode ? `<tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;width:120px;">Reference</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-weight:600;font-family:monospace;color:#1e3a5f;">${p.referenceCode}</td></tr>` : ''}
     <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;width:120px;">Name</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-weight:600;">${p.leadName}</td></tr>
     <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;">Email</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;"><a href="mailto:${p.leadEmail}" style="color:#1e3a5f;">${p.leadEmail}</a></td></tr>
     <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;">Service</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;">${svcLabel}</td></tr>
-    <tr><td style="padding:10px 0;color:#888;font-size:13px;">Property Value</td><td style="padding:10px 0;font-weight:600;">&pound;${Number(p.propertyValue).toLocaleString()}</td></tr>
+    <tr><td style="padding:10px 0;color:#888;font-size:13px;">Property Value</td><td style="padding:10px 0;font-weight:600;">${fmtGBP(Number(p.propertyValue))}</td></tr>
   </table>
 </div>
 <div style="padding:20px 32px;text-align:center;">
@@ -402,6 +490,7 @@ Deno.serve(async (req) => {
             serviceType: existingLead.service_type,
             propertyValue: existingLead.property_value,
             status: existingLead.status || 'new',
+            referenceCode: existingQuote?.reference_code || undefined,
           }),
         })
         emailTasks.push({ task: 'firm_notification', ...result })
@@ -445,9 +534,16 @@ Deno.serve(async (req) => {
           html: customerThankYouHtml({
             firmName: notifyFirm.name,
             leadName: existingLead.full_name,
+            leadEmail: existingLead.email,
             serviceType: existingLead.service_type,
-            grandTotal: notifyTotals?.grandTotal,
+            propertyValue: Number(existingLead.property_value || 0),
             referenceCode: existingQuote?.reference_code || undefined,
+            items: existingItems.length > 0
+              ? (existingItems as { description: string; amount: number; is_vatable?: boolean }[])
+              : undefined,
+            subtotal: notifyTotals ? Number(notifyTotals.subtotal || 0) : undefined,
+            vatTotal: notifyTotals ? Number(notifyTotals.vatTotal || 0) : undefined,
+            grandTotal: notifyTotals?.grandTotal != null ? Number(notifyTotals.grandTotal) : undefined,
             instructionLink,
             hasPdf: !!attachments,
           }),
@@ -575,6 +671,7 @@ Deno.serve(async (req) => {
           serviceType: lead.service_type,
           propertyValue: lead.property_value,
           status: lead.status || 'new',
+          referenceCode: referenceCode || undefined,
         }),
       })
       emailTasks.push({ task: 'firm_notification', ...result })
@@ -623,9 +720,14 @@ Deno.serve(async (req) => {
         html: customerThankYouHtml({
           firmName: firm.name,
           leadName: lead.full_name,
+          leadEmail: lead.email,
           serviceType: lead.service_type,
-          grandTotal: totals?.grandTotal,
+          propertyValue: lead.property_value ? Number(lead.property_value) : undefined,
           referenceCode: referenceCode || undefined,
+          items: quoteItems?.length ? quoteItems : undefined,
+          subtotal: totals?.subtotal != null ? Number(totals.subtotal) : undefined,
+          vatTotal: totals?.vatTotal != null ? Number(totals.vatTotal) : undefined,
+          grandTotal: totals?.grandTotal != null ? Number(totals.grandTotal) : undefined,
           instructionLink,
           hasPdf: !!attachments,
         }),
