@@ -134,97 +134,128 @@ async function generateQuotePdfBase64(p: {
   vatTotal: number
   grandTotal: number
 }): Promise<string> {
+  const formatCurrency = (value: number): string => {
+    const fixed = Number(value || 0).toFixed(2)
+    const [whole, decimals] = fixed.split('.')
+    return `£${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decimals}`
+  }
+  const serviceLabel = p.serviceType
+    .replace(/_/g, ' & ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+  const dateStr = new Date().toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+  const heading = 'Estimate'
+
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([595, 842])
   const { width } = page.getSize()
   const font = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
-  const navy = rgb(0.118, 0.227, 0.373)
-  const black = rgb(0.1, 0.1, 0.1)
-  const grey = rgb(0.45, 0.45, 0.45)
-  const lightGrey = rgb(0.92, 0.92, 0.92)
-  const white = rgb(1, 1, 1)
-  const lm = 50 // left margin
-  const rm = width - 50 // right margin
-  const col2 = rm - 80 // amount column x
-  const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  const darkText = rgb(0.11, 0.11, 0.11)
+  const mutedText = rgb(0.42, 0.42, 0.42)
+  const border = rgb(0.87, 0.89, 0.91)
+  const left = 48
+  const right = width - 48
+  const amountColX = right - 80
+  const top = 800
 
-  // ── Header band ──
-  page.drawRectangle({ x: 0, y: 780, width, height: 62, color: navy })
-  page.drawText(p.firmName, { x: lm, y: 802, font: bold, size: 20, color: white })
-  page.drawText('QUOTE ESTIMATE', { x: rm - bold.widthOfTextAtSize('QUOTE ESTIMATE', 11), y: 805, font: bold, size: 11, color: rgb(0.7, 0.8, 0.9) })
+  page.drawText(p.firmName, { x: left, y: top, font: bold, size: 20, color: darkText })
+  page.drawText(heading, {
+    x: right - bold.widthOfTextAtSize(heading, 24),
+    y: top - 2,
+    font: bold,
+    size: 24,
+    color: darkText,
+  })
   if (p.referenceCode) {
-    page.drawText(p.referenceCode, { x: rm - font.widthOfTextAtSize(p.referenceCode, 9), y: 791, font, size: 9, color: rgb(0.7, 0.8, 0.9) })
+    const refText = `Ref: ${p.referenceCode}`
+    page.drawText(refText, {
+      x: right - font.widthOfTextAtSize(refText, 10),
+      y: top - 18,
+      font,
+      size: 10,
+      color: mutedText,
+    })
   }
 
-  let y = 755
+  let y = top - 38
+  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: border, thickness: 1 })
+  y -= 24
 
-  // ── Two-column info block ──
-  page.drawText('PREPARED FOR', { x: lm, y, font: bold, size: 8, color: grey })
-  page.drawText('DETAILS', { x: 320, y, font: bold, size: 8, color: grey })
+  page.drawText('Prepared for', { x: left, y, font: bold, size: 10, color: mutedText })
+  page.drawText('Service', { x: right - 170, y, font: bold, size: 10, color: mutedText })
   y -= 16
-  page.drawText(p.leadName, { x: lm, y, font: bold, size: 11, color: black })
-  page.drawText(`Date: ${dateStr}`, { x: 320, y, font, size: 10, color: black })
-  y -= 14
-  page.drawText(p.leadEmail, { x: lm, y, font, size: 10, color: grey })
-  const svcLabel = p.serviceType.replace(/_/g, ' & ').replace(/\b\w/g, c => c.toUpperCase())
-  page.drawText(`Service: ${svcLabel}`, { x: 320, y, font, size: 10, color: black })
-  y -= 30
+  page.drawText(p.leadName, { x: left, y, font, size: 12, color: darkText })
+  page.drawText(serviceLabel, { x: right - 170, y, font, size: 11, color: darkText })
+  y -= 16
+  if (p.leadEmail) {
+    page.drawText(p.leadEmail, { x: left, y, font, size: 10, color: mutedText })
+  }
+  page.drawText(dateStr, { x: right - 170, y, font, size: 10, color: mutedText })
+  y -= 26
 
-  // ── Table header ──
-  page.drawRectangle({ x: lm, y: y - 2, width: rm - lm, height: 20, color: navy })
-  page.drawText('Description', { x: lm + 10, y: y + 2, font: bold, size: 9, color: white })
-  page.drawText('VAT', { x: col2 - 50, y: y + 2, font: bold, size: 9, color: white })
-  page.drawText('Amount', { x: col2, y: y + 2, font: bold, size: 9, color: white })
-  y -= 22
+  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: border, thickness: 1 })
+  y -= 16
+  page.drawText('Description', { x: left, y, font: bold, size: 10, color: mutedText })
+  page.drawText('Amount', { x: amountColX, y, font: bold, size: 10, color: mutedText })
+  y -= 10
+  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: border, thickness: 1 })
+  y -= 16
 
-  // ── Line items ──
-  let rowIndex = 0
   for (const item of p.items) {
     if (y < 140) break
-    const desc = String(item.description || 'Item').slice(0, 55)
+    const desc = String(item.description || 'Item').slice(0, 68)
     const amt = Number(item.amount || 0)
-    if (rowIndex % 2 === 0) {
-      page.drawRectangle({ x: lm, y: y - 4, width: rm - lm, height: 18, color: rgb(0.97, 0.97, 0.97) })
-    }
-    page.drawText(desc, { x: lm + 10, y, font, size: 9, color: black })
-    page.drawText(item.is_vatable === false ? 'No' : 'Yes', { x: col2 - 50, y, font, size: 9, color: grey })
-    const amtStr = `£${amt.toFixed(2)}`
-    page.drawText(amtStr, { x: col2 + (80 - font.widthOfTextAtSize(amtStr, 9)), y, font, size: 9, color: black })
+    const isDiscount = amt < 0
+    const amountText = `${isDiscount ? '−' : ''}${formatCurrency(Math.abs(amt))}`
+    page.drawText(desc, { x: left, y, font, size: 10, color: darkText })
+    page.drawText(amountText, {
+      x: right - font.widthOfTextAtSize(amountText, 10),
+      y,
+      font,
+      size: 10,
+      color: isDiscount ? rgb(0.08, 0.5, 0.27) : darkText,
+    })
     y -= 18
-    rowIndex++
+    page.drawLine({ start: { x: left, y: y + 6 }, end: { x: right, y: y + 6 }, color: border, thickness: 0.6 })
   }
 
-  y -= 6
-  page.drawLine({ start: { x: lm, y }, end: { x: rm, y }, color: lightGrey, thickness: 1 })
-  y -= 18
-
-  // ── Totals ──
-  const drawTotalRow = (label: string, value: string, isBold = false, size = 10) => {
-    const f = isBold ? bold : font
-    const c = isBold ? navy : grey
-    page.drawText(label, { x: col2 - 100, y, font: f, size, color: c })
-    const valW = f.widthOfTextAtSize(value, size)
-    page.drawText(value, { x: rm - 10 - valW, y, font: f, size, color: isBold ? navy : black })
-    y -= (isBold ? 20 : 16)
-  }
-
-  drawTotalRow('Subtotal', `£${p.subtotal.toFixed(2)}`)
-  drawTotalRow('VAT (20%)', `£${p.vatTotal.toFixed(2)}`)
-  page.drawLine({ start: { x: col2 - 100, y: y + 6 }, end: { x: rm - 10, y: y + 6 }, color: navy, thickness: 1.5 })
   y -= 4
-  drawTotalRow('TOTAL (inc. VAT)', `£${p.grandTotal.toFixed(2)}`, true, 13)
+  const totalsLabelX = right - 150
+  const drawTotalRow = (label: string, value: string, useBold = false) => {
+    page.drawText(label, {
+      x: totalsLabelX,
+      y,
+      font: useBold ? bold : font,
+      size: useBold ? 12 : 10,
+      color: useBold ? darkText : mutedText,
+    })
+    const textFont = useBold ? bold : font
+    const textSize = useBold ? 12 : 10
+    page.drawText(value, {
+      x: right - textFont.widthOfTextAtSize(value, textSize),
+      y,
+      font: textFont,
+      size: textSize,
+      color: darkText,
+    })
+    y -= useBold ? 22 : 16
+  }
 
-  // ── Footer ──
-  const footerY = 50
-  page.drawLine({ start: { x: lm, y: footerY + 16 }, end: { x: rm, y: footerY + 16 }, color: lightGrey, thickness: 0.5 })
+  drawTotalRow('Subtotal', formatCurrency(p.subtotal))
+  drawTotalRow('VAT', formatCurrency(p.vatTotal))
+  page.drawLine({ start: { x: totalsLabelX, y: y + 6 }, end: { x: right, y: y + 6 }, color: border, thickness: 1 })
+  y -= 2
+  drawTotalRow('Grand Total', formatCurrency(p.grandTotal), true)
+
+  const footerY = 56
+  page.drawLine({ start: { x: left, y: footerY + 14 }, end: { x: right, y: footerY + 14 }, color: border, thickness: 1 })
   page.drawText(
     'This is an estimate only and may be subject to change. Please contact us for a full breakdown.',
-    { x: lm, y: footerY, font, size: 7.5, color: grey },
-  )
-  page.drawText(
-    `Generated by ConveyQuote on ${dateStr}`,
-    { x: lm, y: footerY - 12, font, size: 7, color: rgb(0.7, 0.7, 0.7) },
+    { x: left, y: footerY, font, size: 8, color: mutedText },
   )
 
   const bytes = await pdf.save()

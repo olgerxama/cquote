@@ -132,79 +132,127 @@ async function generateQuotePdfBase64(p: {
   vatTotal: number
   grandTotal: number
 }): Promise<string> {
+  const formatCurrency = (value: number): string => {
+    const fixed = Number(value || 0).toFixed(2)
+    const [whole, decimals] = fixed.split('.')
+    return `£${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decimals}`
+  }
+  const serviceLabel = p.serviceType
+    .replace(/_/g, ' & ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+  const heading = p.documentType === 'invoice' ? 'Invoice' : 'Estimate'
+  const footerText = p.documentType === 'invoice'
+    ? 'Please remit payment within the agreed terms. Contact us with any queries.'
+    : 'This is an estimate only and may be subject to change. Please contact us for a full breakdown.'
+  const dateStr = new Date().toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([595, 842])
   const { width } = page.getSize()
   const font = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
-  const navy = rgb(0.118, 0.227, 0.373)
-  const grey = rgb(0.4, 0.4, 0.4)
-  const line = rgb(0.85, 0.85, 0.85)
+  const darkText = rgb(0.11, 0.11, 0.11)
+  const mutedText = rgb(0.42, 0.42, 0.42)
+  const border = rgb(0.87, 0.89, 0.91)
+  const left = 48
+  const right = width - 48
+  const amountColX = right - 80
 
   let y = 800
-  page.drawText(p.firmName, { x: 40, y, font: bold, size: 18, color: navy })
-  y -= 28
-  const heading = p.documentType === 'invoice' ? 'Invoice' : 'Conveyancing Quote Estimate'
-  page.drawText(heading, { x: 40, y, font, size: 12, color: grey })
-  y -= 22
+  page.drawText(p.firmName, { x: left, y, font: bold, size: 20, color: darkText })
+  page.drawText(heading, {
+    x: right - bold.widthOfTextAtSize(heading, 24),
+    y: y - 2,
+    font: bold,
+    size: 24,
+    color: darkText,
+  })
   if (p.referenceCode) {
-    page.drawText(`Reference: ${p.referenceCode}`, { x: 40, y, font, size: 10, color: grey })
-    y -= 14
+    const refText = `Ref: ${p.referenceCode}`
+    page.drawText(refText, {
+      x: right - font.widthOfTextAtSize(refText, 10),
+      y: y - 18,
+      font,
+      size: 10,
+      color: mutedText,
+    })
   }
-  page.drawText(`Date: ${new Date().toLocaleDateString('en-GB')}`, {
-    x: 40, y, font, size: 10, color: grey,
-  })
+
+  y -= 38
+  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: border, thickness: 1 })
   y -= 24
 
-  page.drawText('Prepared for:', { x: 40, y, font: bold, size: 11, color: navy })
-  y -= 14
-  page.drawText(p.leadName, { x: 40, y, font, size: 11 })
-  y -= 14
-  page.drawText(p.leadEmail, { x: 40, y, font, size: 10, color: grey })
-  y -= 14
-  page.drawText(`Service: ${p.serviceType.replace('_', ' & ')}`, {
-    x: 40, y, font, size: 10, color: grey,
-  })
-  y -= 24
-
-  page.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, color: line, thickness: 1 })
+  page.drawText('Prepared for', { x: left, y, font: bold, size: 10, color: mutedText })
+  page.drawText('Service', { x: right - 170, y, font: bold, size: 10, color: mutedText })
   y -= 16
-  page.drawText('Description', { x: 40, y, font: bold, size: 10, color: navy })
-  page.drawText('VAT', { x: 380, y, font: bold, size: 10, color: navy })
-  page.drawText('Amount', { x: 480, y, font: bold, size: 10, color: navy })
-  y -= 8
-  page.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, color: line, thickness: 1 })
-  y -= 14
+  page.drawText(p.leadName, { x: left, y, font, size: 12, color: darkText })
+  page.drawText(serviceLabel, { x: right - 170, y, font, size: 11, color: darkText })
+  y -= 16
+  page.drawText(p.leadEmail, { x: left, y, font, size: 10, color: mutedText })
+  page.drawText(dateStr, { x: right - 170, y, font, size: 10, color: mutedText })
+  y -= 26
+
+  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: border, thickness: 1 })
+  y -= 16
+  page.drawText('Description', { x: left, y, font: bold, size: 10, color: mutedText })
+  page.drawText('Amount', { x: amountColX, y, font: bold, size: 10, color: mutedText })
+  y -= 10
+  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: border, thickness: 1 })
+  y -= 16
 
   for (const item of p.items) {
     if (y < 120) break
-    const desc = String(item.description || 'Item').slice(0, 60)
+    const desc = String(item.description || 'Item').slice(0, 68)
     const amt = Number(item.amount || 0)
-    page.drawText(desc, { x: 40, y, font, size: 10 })
-    page.drawText(item.is_vatable === false ? 'No' : 'Yes', { x: 380, y, font, size: 10 })
-    page.drawText(`£${amt.toFixed(2)}`, { x: 480, y, font, size: 10 })
-    y -= 14
+    const isDiscount = amt < 0
+    const amountText = `${isDiscount ? '−' : ''}${formatCurrency(Math.abs(amt))}`
+    page.drawText(desc, { x: left, y, font, size: 10, color: darkText })
+    page.drawText(amountText, {
+      x: right - font.widthOfTextAtSize(amountText, 10),
+      y,
+      font,
+      size: 10,
+      color: isDiscount ? rgb(0.08, 0.5, 0.27) : darkText,
+    })
+    y -= 18
+    page.drawLine({ start: { x: left, y: y + 6 }, end: { x: right, y: y + 6 }, color: border, thickness: 0.6 })
   }
 
-  y -= 6
-  page.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, color: line, thickness: 1 })
-  y -= 16
+  y -= 4
+  const totalsLabelX = right - 150
+  const drawTotalRow = (label: string, value: string, useBold = false) => {
+    page.drawText(label, {
+      x: totalsLabelX,
+      y,
+      font: useBold ? bold : font,
+      size: useBold ? 12 : 10,
+      color: useBold ? darkText : mutedText,
+    })
+    const textFont = useBold ? bold : font
+    const textSize = useBold ? 12 : 10
+    page.drawText(value, {
+      x: right - textFont.widthOfTextAtSize(value, textSize),
+      y,
+      font: textFont,
+      size: textSize,
+      color: darkText,
+    })
+    y -= useBold ? 22 : 16
+  }
 
-  page.drawText('Subtotal', { x: 380, y, font, size: 10, color: grey })
-  page.drawText(`£${p.subtotal.toFixed(2)}`, { x: 480, y, font, size: 10 })
-  y -= 14
-  page.drawText('VAT', { x: 380, y, font, size: 10, color: grey })
-  page.drawText(`£${p.vatTotal.toFixed(2)}`, { x: 480, y, font, size: 10 })
-  y -= 16
-  page.drawText('Total (inc VAT)', { x: 380, y, font: bold, size: 12, color: navy })
-  page.drawText(`£${p.grandTotal.toFixed(2)}`, { x: 480, y, font: bold, size: 12, color: navy })
+  drawTotalRow('Subtotal', formatCurrency(p.subtotal))
+  drawTotalRow('VAT', formatCurrency(p.vatTotal))
+  page.drawLine({ start: { x: totalsLabelX, y: y + 6 }, end: { x: right, y: y + 6 }, color: border, thickness: 1 })
+  y -= 2
+  drawTotalRow('Grand Total', formatCurrency(p.grandTotal), true)
 
-  page.drawText(
-    p.documentType === 'invoice'
-      ? 'Please remit payment within the agreed terms. Contact us with any queries.'
-      : 'This is an estimate only and may be subject to change. Please contact us for a full breakdown.',
-    { x: 40, y: 60, font, size: 8, color: grey },
-  )
+  const footerY = 56
+  page.drawLine({ start: { x: left, y: footerY + 14 }, end: { x: right, y: footerY + 14 }, color: border, thickness: 1 })
+  page.drawText(footerText, { x: left, y: footerY, font, size: 8, color: mutedText })
 
   const bytes = await pdf.save()
   let binary = ''
