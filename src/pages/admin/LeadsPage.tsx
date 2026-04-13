@@ -73,7 +73,7 @@ export default function LeadsPage() {
 
       let query = supabase
         .from('leads')
-        .select('*', { count: 'exact' })
+        .select('*, quotes(reference_code)', { count: 'exact' })
         .eq('firm_id', firmId!)
         // Instructed leads first, then newest.
         .order('instruction_submitted_at', { ascending: false, nullsFirst: false })
@@ -170,6 +170,7 @@ export default function LeadsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Ref</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Name</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase hidden sm:table-cell">Email</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Service</th>
@@ -188,6 +189,13 @@ export default function LeadsPage() {
                       selectedLeadId === lead.id ? 'bg-primary/5' : 'hover:bg-muted/50'
                     )}
                   >
+                    <td className="px-5 py-3 text-sm text-muted-foreground font-mono">
+                      {(() => {
+                        const quotes = (lead as unknown as Record<string, unknown>).quotes as { reference_code: string | null }[] | null
+                        const ref = quotes?.[0]?.reference_code
+                        return ref ? <span className="text-xs">{ref}</span> : <span className="text-xs text-muted-foreground/50">—</span>
+                      })()}
+                    </td>
                     <td className="px-5 py-3 text-sm font-medium text-foreground">
                       <div className="flex items-center gap-2">
                         <span>{lead.full_name}</span>

@@ -255,6 +255,20 @@ export default function PublicQuotePage() {
       setQuoteResult(result)
       setLeadRef(data?.instructionRef || data?.id || null)
       setSubmitted(true)
+
+      // Fire email notification via edge function (fire-and-forget).
+      // The RPC only creates data — emails are sent by the edge function.
+      // This is non-blocking: if it fails, the lead is already saved.
+      if (data?.id) {
+        supabase.functions.invoke('create-public-lead', {
+          body: { notifyLeadId: data.id, firmId: firm.id },
+        }).then(({ error: fnErr }) => {
+          if (fnErr) console.warn('Email notification failed (lead still saved):', fnErr)
+          else console.log('Email notification sent successfully')
+        }).catch((fnErr) => {
+          console.warn('Email notification request failed (lead still saved):', fnErr)
+        })
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       console.error('create-public-lead RPC failed:', err)

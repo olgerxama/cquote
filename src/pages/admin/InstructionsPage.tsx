@@ -16,7 +16,7 @@ export default function InstructionsPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from('leads')
-        .select('*')
+        .select('*, quotes(reference_code)')
         .eq('firm_id', firmId!)
         .not('instruction_submitted_at', 'is', null)
         .order('instruction_submitted_at', { ascending: false })
@@ -45,6 +45,7 @@ export default function InstructionsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Ref</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Name</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Email</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Service</th>
@@ -63,6 +64,13 @@ export default function InstructionsPage() {
                       onClick={() => setSelectedLead(lead)}
                       className="border-b border-border last:border-0 cursor-pointer hover:bg-muted/50 transition-colors"
                     >
+                      <td className="px-5 py-3 text-sm text-muted-foreground font-mono">
+                        {(() => {
+                          const quotes = (lead as unknown as Record<string, unknown>).quotes as { reference_code: string | null }[] | null
+                          const ref = quotes?.[0]?.reference_code
+                          return ref ? <span className="text-xs">{ref}</span> : <span className="text-xs text-muted-foreground/50">—</span>
+                        })()}
+                      </td>
                       <td className="px-5 py-3 text-sm font-medium text-foreground">{lead.full_name}</td>
                       <td className="px-5 py-3 text-sm text-muted-foreground">{lead.email}</td>
                       <td className="px-5 py-3 text-sm text-muted-foreground capitalize">
