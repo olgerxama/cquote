@@ -132,25 +132,31 @@ async function renderPdfFromHtmlBase64(html: string): Promise<string | null> {
   const apiKey = Deno.env.get('PDFSHIFT_API_KEY')
   if (!apiKey) return null
 
-  const res = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${btoa(`api:${apiKey}`)}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      source: html,
-      format: 'A4',
-      margin: '0',
-      use_print: true,
-    }),
-  })
-  if (!res.ok) {
-    throw new Error(`PDFSHIFT failed (${res.status}): ${await res.text()}`)
-  }
+  try {
+    const res = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${btoa(`api:${apiKey}`)}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        source: html,
+        format: 'A4',
+        margin: '0',
+        use_print: true,
+      }),
+    })
+    if (!res.ok) {
+      console.error('PDFSHIFT failed:', res.status, await res.text())
+      return null
+    }
 
-  const bytes = new Uint8Array(await res.arrayBuffer())
-  return bytesToBase64(bytes)
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    return bytesToBase64(bytes)
+  } catch (e) {
+    console.error('PDFSHIFT request failed:', e)
+    return null
+  }
 }
 
 // ─── PDF generation (pure JS, runs in Deno edge runtime) ─────────────────
@@ -395,8 +401,8 @@ function quoteAttachmentHtml(p: {
   h += '</td><td valign="top" align="right"><div style="font-size:11px;font-weight:600;text-transform:uppercase;color:#888;margin-bottom:4px">Service</div><div style="font-size:14px;font-weight:500;color:#111">' + svcLabel + '</div>'
   if (p.propertyValue) h += '<div style="font-size:12px;color:#888">Property value: ' + fmt(p.propertyValue) + '</div>'
   h += '</td></tr></table></td></tr>'
-  h += '<tr><td style="padding:16px 16px 0"><table width="100%" cellpadding="0" cellspacing="0"><tr style="border-bottom:2px solid #1e3a5f"><th align="left" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Description</th><th align="right" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Amount</th></tr>' + rows + '</table></td></tr>'
-  h += '<tr><td style="padding:8px 16px 20px"><table width="100%" cellpadding="0" cellspacing="0">'
+  h += '<tr><td style="padding:16px 0 0"><table width="100%" cellpadding="0" cellspacing="0"><tr style="border-bottom:2px solid #1e3a5f"><th align="left" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Description</th><th align="right" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Amount</th></tr>' + rows + '</table></td></tr>'
+  h += '<tr><td style="padding:8px 0 20px"><table width="100%" cellpadding="0" cellspacing="0">'
   h += '<tr><td align="right" style="padding:6px 16px;font-size:13px;color:#888">Subtotal</td><td align="right" width="120" style="padding:6px 16px;font-size:13px;color:#333">' + fmt(p.subtotal) + '</td></tr>'
   h += '<tr><td align="right" style="padding:6px 16px;font-size:13px;color:#888">VAT (20%)</td><td align="right" width="120" style="padding:6px 16px;font-size:13px;color:#333">' + fmt(p.vatTotal) + '</td></tr>'
   h += '<tr style="border-top:2px solid #1e3a5f"><td align="right" style="padding:10px 16px;font-size:16px;font-weight:700;color:#1e3a5f">Total (inc. VAT)</td><td align="right" width="120" style="padding:10px 16px;font-size:18px;font-weight:700;color:#1e3a5f">' + fmt(p.grandTotal) + '</td></tr>'

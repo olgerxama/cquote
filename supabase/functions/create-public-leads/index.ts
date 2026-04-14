@@ -135,25 +135,31 @@ async function renderPdfFromHtmlBase64(html: string): Promise<string | null> {
   const apiKey = Deno.env.get('PDFSHIFT_API_KEY')
   if (!apiKey) return null
 
-  const res = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${btoa(`api:${apiKey}`)}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      source: html,
-      format: 'A4',
-      margin: '0',
-      use_print: true,
-    }),
-  })
-  if (!res.ok) {
-    throw new Error(`PDFSHIFT failed (${res.status}): ${await res.text()}`)
-  }
+  try {
+    const res = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${btoa(`api:${apiKey}`)}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        source: html,
+        format: 'A4',
+        margin: '0',
+        use_print: true,
+      }),
+    })
+    if (!res.ok) {
+      console.error('PDFSHIFT failed:', res.status, await res.text())
+      return null
+    }
 
-  const bytes = new Uint8Array(await res.arrayBuffer())
-  return bytesToBase64(bytes)
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    return bytesToBase64(bytes)
+  } catch (e) {
+    console.error('PDFSHIFT request failed:', e)
+    return null
+  }
 }
 
 // ─── PDF generation ──────────────────────────────────────────────────────
@@ -449,7 +455,7 @@ function customerThankYouHtml(p: {
 
   // — Line items —
   if (rows) {
-    h += '<tr><td style="padding:16px 16px 0">\n'
+    h += '<tr><td style="padding:16px 0 0">\n'
     h += '<table width="100%" cellpadding="0" cellspacing="0">\n'
     h += '<tr style="border-bottom:2px solid #1e3a5f">'
     h += '<th align="left" style="padding:8px 16px;'
@@ -468,7 +474,7 @@ function customerThankYouHtml(p: {
 
   // — Totals —
   if (p.grandTotal != null) {
-    h += '<tr><td style="padding:8px 16px 20px">\n'
+    h += '<tr><td style="padding:8px 0 20px">\n'
     h += '<table width="100%" cellpadding="0" cellspacing="0">\n'
     if (p.subtotal != null) {
       h += '<tr><td align="right" style="padding:6px 16px;'
