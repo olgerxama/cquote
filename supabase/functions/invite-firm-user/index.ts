@@ -13,6 +13,22 @@ function json(body: unknown, status = 200) {
   })
 }
 
+async function findUserIdByEmail(service: ReturnType<typeof createClient>, email: string): Promise<string | null> {
+  const normalized = email.trim().toLowerCase()
+  let page = 1
+  const perPage = 200
+
+  while (page < 20) {
+    const { data, error } = await service.auth.admin.listUsers({ page, perPage })
+    if (error) return null
+    const found = data.users.find((u) => (u.email || '').toLowerCase() === normalized)
+    if (found?.id) return found.id
+    if (data.users.length < perPage) break
+    page += 1
+  }
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -56,15 +72,26 @@ Deno.serve(async (req) => {
 
     const appUrl = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || 'http://localhost:5173'
 
-    const inviteResult = await service.auth.admin.inviteUserByEmail(String(email).trim().toLowerCase(), {
+    const normalizedEmail = String(email).trim().toLowerCase()
+    const inviteResult = await service.auth.admin.inviteUserByEmail(normalizedEmail, {
       redirectTo: `${appUrl}/admin/accept-invite`,
     })
 
-    if (inviteResult.error || !inviteResult.data.user?.id) {
-      return json({ error: inviteResult.error?.message || 'Failed to invite user' }, 400)
+    let invitedUserId = inviteResult.data.user?.id || null
+    let message = 'Invitation sent'
+
+    if (inviteResult.error) {
+      const existingUserId = await findUserIdByEmail(service, normalizedEmail)
+      if (!existingUserId) {
+        return json({ error: inviteResult.error.message || 'Failed to invite user' }, 400)
+      }
+      invitedUserId = existingUserId
+      message = 'Existing user added to firm'
     }
 
-    const invitedUserId = inviteResult.data.user.id
+    if (!invitedUserId) {
+      return json({ error: 'Unable to resolve invited user' }, 400)
+    }
 
     const { error: upsertError } = await service
       .from('firm_users')
@@ -79,7 +106,7 @@ Deno.serve(async (req) => {
 
     if (upsertError) return json({ error: upsertError.message }, 400)
 
-    return json({ ok: true })
+    return json({ ok: true, message })
   } catch (err) {
     return json({ error: String(err) }, 500)
   }
