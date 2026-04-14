@@ -258,9 +258,11 @@ async function generateQuotePdfBase64(p: {
 
   page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
   y -= 16
-  page.drawText('DESCRIPTION', { x: left, y, font: bold, size: 9, color: muted })
-  page.drawText('AMOUNT', { x: right - 60, y, font: bold, size: 9, color: muted })
-  y -= 18
+  page.drawText('DESCRIPTION', { x: left, y, font: bold, size: 10, color: dark })
+  page.drawText('AMOUNT', { x: right - 62, y, font: bold, size: 10, color: dark })
+  y -= 10
+  page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: navy, thickness: 1 })
+  y -= 16
 
   let row = 0
   for (const item of p.items) {
@@ -315,6 +317,15 @@ async function generateQuotePdfBase64(p: {
   page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight - 28, y: y + 8 }, color: navy, thickness: 1.5 })
   y -= 6
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
+
+  const footerY = 48
+  page.drawLine({ start: { x: panelX, y: footerY + 18 }, end: { x: panelX + panelW, y: footerY + 18 }, color: border, thickness: 1 })
+  page.drawText(
+    p.documentType === 'invoice'
+      ? 'Please remit payment within agreed terms. Contact us if you have any questions.'
+      : 'This is an estimate only and may be subject to change. Please contact us for a full breakdown.',
+    { x: left, y: footerY, font, size: 8.5, color: rgb(0.38, 0.46, 0.56) },
+  )
 
   const bytes = await pdf.save()
   return bytesToBase64(bytes)
