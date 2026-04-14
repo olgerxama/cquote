@@ -181,7 +181,6 @@ async function generateQuotePdfBase64(p: {
   const serviceLabel = p.serviceType
     .replace(/_/g, ' & ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
-  const serviceLower = serviceLabel.toLowerCase()
   const heading = p.documentType === 'invoice' ? 'INVOICE' : 'QUOTE ESTIMATE'
   const dateStr = new Date().toLocaleDateString('en-GB', {
     day: 'numeric',
@@ -234,29 +233,21 @@ async function generateQuotePdfBase64(p: {
     color: rgb(0.83, 0.87, 0.93),
   })
 
-  let y = headerY - 24
-  page.drawText(`Dear ${p.leadName},`, { x: left, y, font: bold, size: 12, color: dark })
-  y -= 30
-  const bodyLine1 = `Thank you for your ${serviceLower} enquiry. We have received your details and a member of`
-  const bodyLine2 = 'our team will be in touch shortly.'
-  page.drawText(bodyLine1, { x: left, y, font, size: 11, color: rgb(0.33, 0.33, 0.33) })
-  y -= 22
-  page.drawText(bodyLine2, { x: left, y, font, size: 11, color: rgb(0.33, 0.33, 0.33) })
-
-  y -= 30
+  let y = headerY - 18
   page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
   y -= 18
+  const rightInfoX = right - 30
   page.drawText('PREPARED FOR', { x: left, y, font: bold, size: 9, color: muted })
-  page.drawText('SERVICE', { x: right - 80, y, font: bold, size: 9, color: muted })
+  page.drawText('SERVICE', { x: rightInfoX - bold.widthOfTextAtSize('SERVICE', 9), y, font: bold, size: 9, color: muted })
   y -= 16
   page.drawText(p.leadName, { x: left, y, font, size: 14, color: dark })
-  page.drawText(serviceLabel, { x: right - font.widthOfTextAtSize(serviceLabel, 14), y, font, size: 14, color: dark })
+  page.drawText(serviceLabel, { x: rightInfoX - font.widthOfTextAtSize(serviceLabel, 14), y, font, size: 14, color: dark })
   y -= 16
   page.drawText(p.leadEmail, { x: left, y, font, size: 10, color: rgb(0.09, 0.35, 0.82) })
   if (p.propertyValue != null) {
     const prop = `Property value: ${formatCurrency(p.propertyValue)}`
     page.drawText(prop, {
-      x: right - font.widthOfTextAtSize(prop, 10),
+      x: rightInfoX - font.widthOfTextAtSize(prop, 10),
       y,
       font,
       size: 10,
@@ -294,7 +285,7 @@ async function generateQuotePdfBase64(p: {
   }
 
   y -= 8
-  const totalsValueRight = right
+  const totalsValueRight = right - 24
   const totalsValueLeft = right - 130
   const totalsLabelRight = totalsValueLeft - 20
   const drawTotalRow = (label: string, value: string, useBold = false) => {
@@ -321,8 +312,8 @@ async function generateQuotePdfBase64(p: {
 
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))
   drawTotalRow('VAT (20%)', formatCurrency(p.vatTotal))
-  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight, y: y + 8 }, color: navy, thickness: 1.5 })
-  y -= 2
+  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight - 8, y: y + 8 }, color: navy, thickness: 1.5 })
+  y -= 6
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
   const bytes = await pdf.save()
