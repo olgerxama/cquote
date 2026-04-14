@@ -357,6 +357,7 @@ function quoteAttachmentHtml(p: {
   leadEmail: string
   serviceType: string
   propertyValue?: number
+  propertyAddress?: string
   referenceCode?: string
   items: QuoteItemRow[]
   subtotal: number
@@ -394,18 +395,18 @@ function quoteAttachmentHtml(p: {
   h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;color:rgba(255,255,255,0.5)">' + (p.documentType === 'invoice' ? 'Invoice' : 'Quote Estimate') + '</div>'
   h += '<div style="font-size:13px;margin-top:4px;color:rgba(255,255,255,0.7)">' + dateStr + '</div>'
   h += '</td></tr></table></td></tr>'
-  h += '<tr><td style="padding:24px 28px;border-bottom:1px solid #e5e5e5"><p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#111">Dear ' + p.leadName + ',</p>'
-  h += '<p style="margin:0;font-size:14px;line-height:1.6;color:#555">Thank you for your ' + svcLabel.toLowerCase() + ' enquiry. We have received your details and a member of our team will be in touch shortly.</p></td></tr>'
   h += '<tr><td style="padding:20px 28px;border-bottom:1px solid #e5e5e5"><table width="100%" cellpadding="0" cellspacing="0"><tr><td valign="top">'
   h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;color:#888;margin-bottom:4px">Prepared For</div><div style="font-size:14px;font-weight:500;color:#111">' + p.leadName + '</div><div style="font-size:12px;color:#888">' + p.leadEmail + '</div>'
-  h += '</td><td valign="top" align="right"><div style="font-size:11px;font-weight:600;text-transform:uppercase;color:#888;margin-bottom:4px">Service</div><div style="font-size:14px;font-weight:500;color:#111">' + svcLabel + '</div>'
+  h += '</td><td valign="top" align="right" style="text-align:right"><div style="font-size:11px;font-weight:600;text-transform:uppercase;color:#888;margin-bottom:4px">Service</div><div style="font-size:14px;font-weight:500;color:#111">' + svcLabel + '</div>'
+  if (p.propertyAddress) h += '<div style="font-size:12px;color:#888">' + p.propertyAddress + '</div>'
   if (p.propertyValue) h += '<div style="font-size:12px;color:#888">Property value: ' + fmt(p.propertyValue) + '</div>'
   h += '</td></tr></table></td></tr>'
   h += '<tr><td style="padding:16px 0 0"><table width="100%" cellpadding="0" cellspacing="0"><tr style="border-bottom:2px solid #1e3a5f"><th align="left" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Description</th><th align="right" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Amount</th></tr>' + rows + '</table></td></tr>'
   h += '<tr><td style="padding:8px 0 20px"><table width="100%" cellpadding="0" cellspacing="0">'
   h += '<tr><td align="right" style="padding:6px 16px;font-size:13px;color:#888">Subtotal</td><td align="right" width="120" style="padding:6px 16px;font-size:13px;color:#333">' + fmt(p.subtotal) + '</td></tr>'
   h += '<tr><td align="right" style="padding:6px 16px;font-size:13px;color:#888">VAT (20%)</td><td align="right" width="120" style="padding:6px 16px;font-size:13px;color:#333">' + fmt(p.vatTotal) + '</td></tr>'
-  h += '<tr style="border-top:2px solid #1e3a5f"><td align="right" style="padding:10px 16px;font-size:16px;font-weight:700;color:#1e3a5f">Total (inc. VAT)</td><td align="right" width="120" style="padding:10px 16px;font-size:18px;font-weight:700;color:#1e3a5f">' + fmt(p.grandTotal) + '</td></tr>'
+  h += '<tr><td colspan="2" style="padding:0 16px 4px"><div style="height:2px;background:#1e3a5f"></div></td></tr>'
+  h += '<tr><td align="right" style="padding:14px 16px 10px;font-size:16px;font-weight:700;color:#1e3a5f">Total (inc. VAT)</td><td align="right" width="120" style="padding:14px 16px 10px;font-size:18px;font-weight:700;color:#1e3a5f">' + fmt(p.grandTotal) + '</td></tr>'
   h += '</table></td></tr></table></td></tr></table></body></html>'
   return h
 }
@@ -513,6 +514,7 @@ Deno.serve(async (req) => {
           leadEmail: lead.email,
           serviceType: lead.service_type,
           propertyValue: lead.property_value ? Number(lead.property_value) : undefined,
+          propertyAddress: String(lead.property_postcode || ''),
           referenceCode: quote.reference_code || undefined,
           items,
           subtotal: Number(quote.subtotal || totals.subtotal || 0),

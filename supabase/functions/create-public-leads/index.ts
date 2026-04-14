@@ -340,6 +340,7 @@ function customerThankYouHtml(p: {
   leadEmail: string
   serviceType: string
   propertyValue?: number
+  propertyAddress?: string
   referenceCode?: string
   items?: { description: string; amount: number; is_vatable?: boolean }[]
   subtotal?: number
@@ -347,6 +348,7 @@ function customerThankYouHtml(p: {
   grandTotal?: number
   instructionLink?: string
   hasPdf: boolean
+  includeIntro?: boolean
 }): string {
   const svcLabel = p.serviceType
     .replace(/_/g, ' & ')
@@ -415,17 +417,19 @@ function customerThankYouHtml(p: {
   h += '</td></tr></table>\n'
   h += '</td></tr>\n'
 
-  // — Thank you text —
-  h += '<tr><td style="padding:24px 28px;'
-  h += 'border-bottom:1px solid #e5e5e5">\n'
-  h += '<p style="margin:0 0 8px;font-size:15px;'
-  h += 'font-weight:600;color:#111">Dear ' + p.leadName + ',</p>\n'
-  h += '<p style="margin:0;font-size:14px;'
-  h += 'line-height:1.6;color:#555">'
-  h += 'Thank you for your ' + svcLabel.toLowerCase()
-  h += ' enquiry. We have received your details and '
-  h += 'a member of our team will be in touch shortly.</p>\n'
-  h += '</td></tr>\n'
+  if (p.includeIntro !== false) {
+    // — Thank you text —
+    h += '<tr><td style="padding:24px 28px;'
+    h += 'border-bottom:1px solid #e5e5e5">\n'
+    h += '<p style="margin:0 0 8px;font-size:15px;'
+    h += 'font-weight:600;color:#111">Dear ' + p.leadName + ',</p>\n'
+    h += '<p style="margin:0;font-size:14px;'
+    h += 'line-height:1.6;color:#555">'
+    h += 'Thank you for your ' + svcLabel.toLowerCase()
+    h += ' enquiry. We have received your details and '
+    h += 'a member of our team will be in touch shortly.</p>\n'
+    h += '</td></tr>\n'
+  }
 
   // — Info grid —
   h += '<tr><td style="padding:20px 28px;'
@@ -440,12 +444,16 @@ function customerThankYouHtml(p: {
   h += '<div style="font-size:12px;color:#888">'
   h += p.leadEmail + '</div>\n'
   h += '</td>\n'
-  h += '<td valign="top" align="right">'
+  h += '<td valign="top" align="right" style="text-align:right">'
   h += '<div style="font-size:11px;font-weight:600;'
   h += 'text-transform:uppercase;color:#888;'
   h += 'margin-bottom:4px">Service</div>\n'
   h += '<div style="font-size:14px;font-weight:500;'
   h += 'color:#111">' + svcLabel + '</div>\n'
+  if (p.propertyAddress) {
+    h += '<div style="font-size:12px;color:#888">'
+    h += p.propertyAddress + '</div>\n'
+  }
   if (p.propertyValue) {
     h += '<div style="font-size:12px;color:#888">'
     h += 'Property value: ' + fmt(p.propertyValue) + '</div>\n'
@@ -490,11 +498,13 @@ function customerThankYouHtml(p: {
       h += 'font-size:13px;color:#333">'
       h += fmt(p.vatTotal) + '</td></tr>\n'
     }
-    h += '<tr style="border-top:2px solid #1e3a5f">'
-    h += '<td align="right" style="padding:10px 16px;'
+    h += '<tr><td colspan="2" style="padding:0 16px 4px">'
+    h += '<div style="height:2px;background:#1e3a5f"></div></td></tr>\n'
+    h += '<tr>'
+    h += '<td align="right" style="padding:14px 16px 10px;'
     h += 'font-size:16px;font-weight:700;'
     h += 'color:#1e3a5f">Total (inc. VAT)</td>\n'
-    h += '<td align="right" width="120" style="padding:10px 16px;'
+    h += '<td align="right" width="120" style="padding:14px 16px 10px;'
     h += 'font-size:18px;font-weight:700;'
     h += 'color:#1e3a5f">'
     h += fmt(p.grandTotal) + '</td></tr>\n'
@@ -761,6 +771,7 @@ Deno.serve(async (req) => {
               leadEmail: existingLead.email,
               serviceType: existingLead.service_type,
               propertyValue: existingLead.property_value ? Number(existingLead.property_value) : undefined,
+              propertyAddress: String(existingLead.property_postcode || ''),
               referenceCode: existingQuote?.reference_code || undefined,
               items: existingItems as { description: string; amount: number; is_vatable?: boolean }[],
               subtotal: notifyTotals ? Number(notifyTotals.subtotal || 0) : undefined,
@@ -768,6 +779,7 @@ Deno.serve(async (req) => {
               grandTotal: notifyTotals?.grandTotal != null ? Number(notifyTotals.grandTotal) : undefined,
               instructionLink: undefined,
               hasPdf: false,
+              includeIntro: false,
             })
             const pdfBase64 = (await renderPdfFromHtmlBase64(pdfHtml)) || await generateQuotePdfBase64({
               firmName: notifyFirm.name,
@@ -957,6 +969,7 @@ Deno.serve(async (req) => {
               leadEmail: lead.email,
               serviceType: lead.service_type,
               propertyValue: lead.property_value ? Number(lead.property_value) : undefined,
+              propertyAddress: String(lead.property_postcode || ''),
               referenceCode: referenceCode || undefined,
               items: quoteItems,
               subtotal: totals?.subtotal != null ? Number(totals.subtotal) : undefined,
@@ -964,6 +977,7 @@ Deno.serve(async (req) => {
               grandTotal: totals?.grandTotal != null ? Number(totals.grandTotal) : undefined,
               instructionLink: undefined,
               hasPdf: false,
+              includeIntro: false,
             })
             const pdfBase64 = (await renderPdfFromHtmlBase64(pdfHtml)) || await generateQuotePdfBase64({
               firmName: firm.name,
