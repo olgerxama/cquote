@@ -277,6 +277,9 @@ export interface PublicFormConfig {
   show_discount_code: boolean;
   show_instruct_button: boolean;
   hidden_fields: string[];
+  required_fields: string[];
+  instruction_hidden_fields: string[];
+  instruction_required_fields: string[];
 }
 
 export const DEFAULT_PUBLIC_FORM_CONFIG: PublicFormConfig = {
@@ -290,6 +293,9 @@ export const DEFAULT_PUBLIC_FORM_CONFIG: PublicFormConfig = {
   show_discount_code: true,
   show_instruct_button: true,
   hidden_fields: [],
+  required_fields: [],
+  instruction_hidden_fields: [],
+  instruction_required_fields: [],
 };
 
 export const ANSWER_LABELS: Record<string, string> = {

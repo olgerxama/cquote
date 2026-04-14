@@ -39,7 +39,21 @@ const SECTION_TOGGLES: Array<{ key: keyof PublicFormConfig; label: string; descr
   { key: 'show_instruct_button', label: 'Instruct button', description: 'Show the CTA to instruct after the quote.' },
 ]
 
-type Tab = 'firm' | 'branding' | 'form' | 'quote' | 'review' | 'email' | 'embed'
+const INSTRUCTION_FORM_FIELDS: Array<{ key: string; label: string }> = [
+  { key: 'client_type', label: 'Client Type' },
+  { key: 'full_name', label: 'Full Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'address_line_1', label: 'Address Line 1' },
+  { key: 'address_line_2', label: 'Address Line 2' },
+  { key: 'town_city', label: 'Town / City' },
+  { key: 'postcode', label: 'Postcode' },
+  { key: 'id_check_consent', label: 'ID Check Consent' },
+  { key: 'source_of_funds', label: 'Source of Funds' },
+  { key: 'additional_notes', label: 'Additional Notes' },
+]
+
+type Tab = 'firm' | 'branding' | 'form' | 'instruction' | 'quote' | 'review' | 'email' | 'embed'
 
 export default function SettingsPage() {
   const { firmId } = useAuth()
@@ -112,6 +126,7 @@ export default function SettingsPage() {
     { key: 'firm', label: 'Firm' },
     { key: 'branding', label: 'Branding' },
     { key: 'form', label: 'Public form' },
+    { key: 'instruction', label: 'Instruction form' },
     { key: 'quote', label: 'Quote behaviour' },
     { key: 'review', label: 'Manual review' },
     { key: 'email', label: 'Email' },
@@ -127,7 +142,7 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-1">Configure your firm, quote form, and embedding options.</p>
       </div>
 
-      <div className="flex gap-1 border-b border-border mb-6 overflow-x-auto">
+      <div className="flex flex-wrap gap-1 border-b border-border mb-6">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -220,6 +235,13 @@ export default function SettingsPage() {
             config={(form.public_form_config || DEFAULT_PUBLIC_FORM_CONFIG) as PublicFormConfig}
             enabled={!!form.public_quote_form_enabled}
             onEnabledChange={(v) => update('public_quote_form_enabled', v)}
+            onConfigChange={updateFormConfig}
+          />
+        )}
+
+        {tab === 'instruction' && (
+          <InstructionFormTab
+            config={(form.public_form_config || DEFAULT_PUBLIC_FORM_CONFIG) as PublicFormConfig}
             onConfigChange={updateFormConfig}
           />
         )}
@@ -359,6 +381,7 @@ function FormTab({
 }) {
   const [search, setSearch] = useState('')
   const hiddenSet = useMemo(() => new Set(config.hidden_fields), [config.hidden_fields])
+  const requiredSet = useMemo(() => new Set(config.required_fields || []), [config.required_fields])
 
   const filteredFields = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -368,11 +391,23 @@ function FormTab({
     )
   }, [search])
 
-  function toggleField(key: string) {
-    const next = new Set(hiddenSet)
-    if (next.has(key)) next.delete(key)
-    else next.add(key)
-    onConfigChange('hidden_fields', Array.from(next))
+  function setFieldMode(key: string, mode: 'mandatory' | 'optional' | 'hidden') {
+    const nextHidden = new Set(hiddenSet)
+    const nextRequired = new Set(requiredSet)
+
+    if (mode === 'hidden') {
+      nextHidden.add(key)
+      nextRequired.delete(key)
+    } else if (mode === 'mandatory') {
+      nextHidden.delete(key)
+      nextRequired.add(key)
+    } else {
+      nextHidden.delete(key)
+      nextRequired.delete(key)
+    }
+
+    onConfigChange('hidden_fields', Array.from(nextHidden))
+    onConfigChange('required_fields', Array.from(nextRequired))
   }
 
   return (
@@ -427,13 +462,16 @@ function FormTab({
                   <div className="text-sm font-medium text-foreground truncate">{f.label}</div>
                   <div className="text-xs text-muted-foreground truncate">{f.key}</div>
                 </div>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 ml-3 shrink-0"
-                  checked={!hidden}
-                  onChange={() => toggleField(f.key)}
-                  title={hidden ? 'Hidden — click to show' : 'Visible — click to hide'}
-                />
+                <select
+                  value={hidden ? 'hidden' : requiredSet.has(f.key) ? 'mandatory' : 'optional'}
+                  onChange={(e) => setFieldMode(f.key, e.target.value as 'mandatory' | 'optional' | 'hidden')}
+                  className="ml-3 shrink-0 rounded-md border border-input bg-background px-2 py-1 text-xs"
+                  title="Set field mode"
+                >
+                  <option value="mandatory">Mandatory</option>
+                  <option value="optional">Optional</option>
+                  <option value="hidden">Hidden</option>
+                </select>
               </label>
             )
           })}
@@ -445,6 +483,91 @@ function FormTab({
         </div>
       </Section>
     </>
+  )
+}
+
+function InstructionFormTab({
+  config,
+  onConfigChange,
+}: {
+  config: PublicFormConfig
+  onConfigChange: <K extends keyof PublicFormConfig>(key: K, value: PublicFormConfig[K]) => void
+}) {
+  const [search, setSearch] = useState('')
+  const hiddenSet = useMemo(() => new Set(config.instruction_hidden_fields || []), [config.instruction_hidden_fields])
+  const requiredSet = useMemo(() => new Set(config.instruction_required_fields || []), [config.instruction_required_fields])
+
+  const filteredFields = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return INSTRUCTION_FORM_FIELDS
+    return INSTRUCTION_FORM_FIELDS.filter(
+      (f) => f.label.toLowerCase().includes(q) || f.key.toLowerCase().includes(q),
+    )
+  }, [search])
+
+  function setFieldMode(key: string, mode: 'mandatory' | 'optional' | 'hidden') {
+    const nextHidden = new Set(hiddenSet)
+    const nextRequired = new Set(requiredSet)
+
+    if (mode === 'hidden') {
+      nextHidden.add(key)
+      nextRequired.delete(key)
+    } else if (mode === 'mandatory') {
+      nextHidden.delete(key)
+      nextRequired.add(key)
+    } else {
+      nextHidden.delete(key)
+      nextRequired.delete(key)
+    }
+
+    onConfigChange('instruction_hidden_fields', Array.from(nextHidden))
+    onConfigChange('instruction_required_fields', Array.from(nextRequired))
+  }
+
+  return (
+    <Section title="Instruction form fields">
+      <div className="flex items-center justify-between -mt-2 mb-2">
+        <p className="text-xs text-muted-foreground">
+          Configure what appears on the instruction form and whether each field is mandatory.
+        </p>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search fields…"
+            className="pl-9 pr-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring w-56"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 max-h-96 overflow-y-auto">
+        {filteredFields.map((f) => {
+          const hidden = hiddenSet.has(f.key)
+          return (
+            <label
+              key={f.key}
+              className="flex items-center justify-between py-2 border-b border-border px-2 rounded hover:bg-muted/30"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-foreground truncate">{f.label}</div>
+                <div className="text-xs text-muted-foreground truncate">{f.key}</div>
+              </div>
+              <select
+                value={hidden ? 'hidden' : requiredSet.has(f.key) ? 'mandatory' : 'optional'}
+                onChange={(e) => setFieldMode(f.key, e.target.value as 'mandatory' | 'optional' | 'hidden')}
+                className="ml-3 shrink-0 rounded-md border border-input bg-background px-2 py-1 text-xs"
+              >
+                <option value="mandatory">Mandatory</option>
+                <option value="optional">Optional</option>
+                <option value="hidden">Hidden</option>
+              </select>
+            </label>
+          )
+        })}
+      </div>
+    </Section>
   )
 }
 
