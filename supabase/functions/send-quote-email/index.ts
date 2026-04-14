@@ -205,35 +205,35 @@ async function generateQuotePdfBase64(p: {
 
   page.drawRectangle({ x: panelX, y: 34, width: panelW, height: height - 68, color: rgb(1, 1, 1) })
 
-  const headerY = 710
-  page.drawRectangle({ x: panelX, y: headerY, width: panelW, height: 110, color: navy })
-  page.drawText(p.firmName, { x: left, y: headerY + 72, font: bold, size: 24, color: rgb(1, 1, 1) })
+  const headerY = 730
+  page.drawRectangle({ x: panelX, y: headerY, width: panelW, height: 90, color: navy })
+  page.drawText(p.firmName, { x: left, y: headerY + 54, font: bold, size: 20, color: rgb(1, 1, 1) })
   if (p.referenceCode) {
     const refText = `Ref: ${p.referenceCode}`
     page.drawText(refText, {
       x: left,
-      y: headerY + 36,
+      y: headerY + 22,
       font,
-      size: 12,
+      size: 11,
       color: rgb(0.78, 0.84, 0.92),
     })
   }
   page.drawText(heading, {
     x: right - bold.widthOfTextAtSize(heading, 11),
-    y: headerY + 86,
+    y: headerY + 62,
     font: bold,
     size: 11,
     color: rgb(0.72, 0.78, 0.86),
   })
   page.drawText(dateStr, {
     x: right - font.widthOfTextAtSize(dateStr, 13),
-    y: headerY + 50,
+    y: headerY + 30,
     font,
     size: 13,
     color: rgb(0.83, 0.87, 0.93),
   })
 
-  let y = headerY - 18
+  let y = headerY - 14
   page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
   y -= 18
   const rightInfoX = right - 8
@@ -392,12 +392,12 @@ function quoteAttachmentHtml(p: {
   h += '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>'
   h += '<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;color:#333"><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px">'
   h += '<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden">'
-  h += '<tr><td bgcolor="#1e3a5f" style="padding:24px 28px"><table width="100%" cellpadding="0" cellspacing="0"><tr><td valign="top">'
-  h += '<div style="color:#fff;font-size:20px;font-weight:700">' + p.firmName + '</div>'
-  if (p.referenceCode) h += '<div style="color:rgba(255,255,255,0.7);font-size:14px;margin-top:4px;font-family:monospace">' + p.referenceCode + '</div>'
+  h += '<tr><td bgcolor="#1e3a5f" style="padding:16px 24px"><table width="100%" cellpadding="0" cellspacing="0"><tr><td valign="top">'
+  h += '<div style="color:#fff;font-size:18px;font-weight:700">' + p.firmName + '</div>'
+  if (p.referenceCode) h += '<div style="color:rgba(255,255,255,0.7);font-size:13px;margin-top:2px;font-family:monospace">' + p.referenceCode + '</div>'
   h += '</td><td valign="top" align="right">'
   h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;color:rgba(255,255,255,0.5)">' + (p.documentType === 'invoice' ? 'Invoice' : 'Quote Estimate') + '</div>'
-  h += '<div style="font-size:13px;margin-top:4px;color:rgba(255,255,255,0.7)">' + dateStr + '</div>'
+  h += '<div style="font-size:13px;margin-top:2px;color:rgba(255,255,255,0.7)">' + dateStr + '</div>'
   h += '</td></tr></table></td></tr>'
   h += '<tr><td style="padding:20px 28px;border-bottom:1px solid #e5e5e5"><table width="100%" cellpadding="0" cellspacing="0"><tr><td valign="top">'
   h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;color:#888;margin-bottom:4px">Prepared For</div><div style="font-size:14px;font-weight:500;color:#111">' + p.leadName + '</div><div style="font-size:12px;color:#888">' + p.leadEmail + '</div>'

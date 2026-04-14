@@ -207,35 +207,35 @@ async function generateQuotePdfBase64(p: {
 
   page.drawRectangle({ x: panelX, y: 34, width: panelW, height: height - 68, color: rgb(1, 1, 1) })
 
-  const headerY = 710
-  page.drawRectangle({ x: panelX, y: headerY, width: panelW, height: 110, color: navy })
-  page.drawText(p.firmName, { x: left, y: headerY + 72, font: bold, size: 24, color: rgb(1, 1, 1) })
+  const headerY = 730
+  page.drawRectangle({ x: panelX, y: headerY, width: panelW, height: 90, color: navy })
+  page.drawText(p.firmName, { x: left, y: headerY + 54, font: bold, size: 20, color: rgb(1, 1, 1) })
   if (p.referenceCode) {
     const refText = p.referenceCode
     page.drawText(refText, {
       x: left,
-      y: headerY + 36,
+      y: headerY + 22,
       font,
-      size: 12,
+      size: 11,
       color: rgb(0.78, 0.84, 0.92),
     })
   }
   page.drawText(heading, {
     x: right - bold.widthOfTextAtSize(heading, 11),
-    y: headerY + 86,
+    y: headerY + 62,
     font: bold,
     size: 11,
     color: rgb(0.72, 0.78, 0.86),
   })
   page.drawText(dateStr, {
     x: right - font.widthOfTextAtSize(dateStr, 13),
-    y: headerY + 50,
+    y: headerY + 30,
     font,
     size: 13,
     color: rgb(0.83, 0.87, 0.93),
   })
 
-  let y = headerY - 18
+  let y = headerY - 14
   page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
   y -= 18
   const rightInfoX = right - 8
@@ -351,6 +351,7 @@ function customerThankYouHtml(p: {
   instructionLink?: string
   hasPdf: boolean
   includeIntro?: boolean
+  compactHeader?: boolean
 }): string {
   const svcLabel = p.serviceType
     .replace(/_/g, ' & ')
@@ -363,6 +364,10 @@ function customerThankYouHtml(p: {
   const dateStr = d.toLocaleDateString('en-GB', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
+  const headerPadding = p.compactHeader ? '16px 24px' : '24px 28px'
+  const firmTitleSize = p.compactHeader ? '18px' : '20px'
+  const refSize = p.compactHeader ? '13px' : '14px'
+  const rightDateMargin = p.compactHeader ? '2px' : '4px'
 
   // Line item rows — keep styles SHORT to avoid QP encoding bugs
   let rows = ''
@@ -398,14 +403,14 @@ function customerThankYouHtml(p: {
   h += 'border-radius:8px;overflow:hidden">\n'
 
   // — Header band —
-  h += '<tr><td bgcolor="#1e3a5f" style="padding:24px 28px">\n'
+  h += '<tr><td bgcolor="#1e3a5f" style="padding:' + headerPadding + '">\n'
   h += '<table width="100%" cellpadding="0" cellspacing="0"><tr>\n'
   h += '<td valign="top">'
-  h += '<div style="color:#fff;font-size:20px;'
+  h += '<div style="color:#fff;font-size:' + firmTitleSize + ';'
   h += 'font-weight:700">' + p.firmName + '</div>\n'
   if (p.referenceCode) {
     h += '<div style="color:rgba(255,255,255,0.7);'
-    h += 'font-size:14px;margin-top:4px;'
+    h += 'font-size:' + refSize + ';margin-top:2px;'
     h += 'font-family:monospace">'
     h += p.referenceCode + '</div>\n'
   }
@@ -414,7 +419,7 @@ function customerThankYouHtml(p: {
   h += '<div style="font-size:11px;font-weight:600;'
   h += 'text-transform:uppercase;'
   h += 'color:rgba(255,255,255,0.5)">Quote Estimate</div>\n'
-  h += '<div style="font-size:13px;margin-top:4px;'
+  h += '<div style="font-size:13px;margin-top:' + rightDateMargin + ';'
   h += 'color:rgba(255,255,255,0.7)">' + dateStr + '</div>\n'
   h += '</td></tr></table>\n'
   h += '</td></tr>\n'
@@ -782,6 +787,7 @@ Deno.serve(async (req) => {
               instructionLink: undefined,
               hasPdf: false,
               includeIntro: false,
+              compactHeader: true,
             })
             const pdfBase64 = (await renderPdfFromHtmlBase64(pdfHtml)) || await generateQuotePdfBase64({
               firmName: notifyFirm.name,
@@ -981,6 +987,7 @@ Deno.serve(async (req) => {
               instructionLink: undefined,
               hasPdf: false,
               includeIntro: false,
+              compactHeader: true,
             })
             const pdfBase64 = (await renderPdfFromHtmlBase64(pdfHtml)) || await generateQuotePdfBase64({
               firmName: firm.name,
