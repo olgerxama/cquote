@@ -58,7 +58,7 @@ const INSTRUCTION_FORM_FIELDS: Array<{ key: string; label: string }> = [
   { key: 'additional_notes', label: 'Additional Notes' },
 ]
 
-type Tab = 'firm' | 'branding' | 'form' | 'instruction' | 'team' | 'quote' | 'review' | 'email' | 'embed'
+type Tab = 'firm' | 'form' | 'instruction' | 'team' | 'quote' | 'review' | 'email' | 'embed'
 
 export default function SettingsPage() {
   const { firmId, user } = useAuth()
@@ -144,7 +144,6 @@ export default function SettingsPage() {
 
   const tabs: Array<{ key: Tab; label: string }> = [
     { key: 'firm', label: 'Firm' },
-    { key: 'branding', label: 'Branding' },
     { key: 'form', label: 'Public form' },
     { key: 'instruction', label: 'Instruction form' },
     { key: 'team', label: 'Team' },
@@ -181,74 +180,74 @@ export default function SettingsPage() {
 
       <div className="space-y-5">
         {tab === 'firm' && (
-          <Section title="Firm details">
-            <Field label="Firm name">
-              <Input value={form.name || ''} onChange={(v) => update('name', v)} />
-            </Field>
-            <Field label="Slug" hint="Used in your public quote URL: /quote/your-slug">
-              <Input value={form.slug || ''} onChange={(v) => update('slug', v)} />
-            </Field>
-            <Field label="Plan">
-              <Select
-                value={form.plan_type || 'free'}
-                onChange={(v) => update('plan_type', v as Firm['plan_type'])}
-                options={[
-                  { value: 'free', label: 'Free' },
-                  { value: 'professional', label: 'Professional' },
-                ]}
-              />
-            </Field>
-            <Field label="Admin notes" hint="Internal notes (not shown to clients)">
-              <Textarea
-                value={form.admin_notes || ''}
-                onChange={(v) => update('admin_notes', v)}
-                rows={3}
-              />
-            </Field>
-          </Section>
-        )}
+          <>
+            <Section title="Firm details">
+              <Field label="Firm name">
+                <Input value={form.name || ''} onChange={(v) => update('name', v)} />
+              </Field>
+              <Field label="Slug" hint="Used in your public quote URL: /quote/your-slug">
+                <Input value={form.slug || ''} onChange={(v) => update('slug', v)} />
+              </Field>
+              <Field label="Plan">
+                <Select
+                  value={form.plan_type || 'free'}
+                  onChange={(v) => update('plan_type', v as Firm['plan_type'])}
+                  options={[
+                    { value: 'free', label: 'Free' },
+                    { value: 'professional', label: 'Professional' },
+                  ]}
+                />
+              </Field>
+              <Field label="Admin notes" hint="Internal notes (not shown to clients)">
+                <Textarea
+                  value={form.admin_notes || ''}
+                  onChange={(v) => update('admin_notes', v)}
+                  rows={3}
+                />
+              </Field>
+            </Section>
 
-        {tab === 'branding' && (
-          <Section title="Branding">
-            <Field label="Logo URL">
-              <Input value={form.logo_url || ''} onChange={(v) => update('logo_url', v)} />
-            </Field>
-            <Field label="Primary colour">
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={form.primary_color || '#1e3a5f'}
-                  onChange={(e) => update('primary_color', e.target.value)}
-                  className="h-10 w-16 rounded border border-input cursor-pointer"
+            <Section title="Branding">
+              <Field label="Logo URL">
+                <Input value={form.logo_url || ''} onChange={(v) => update('logo_url', v)} />
+              </Field>
+              <Field label="Primary colour">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={form.primary_color || '#1e3a5f'}
+                    onChange={(e) => update('primary_color', e.target.value)}
+                    className="h-10 w-16 rounded border border-input cursor-pointer"
+                  />
+                  <Input
+                    value={form.primary_color || ''}
+                    onChange={(v) => update('primary_color', v)}
+                  />
+                </div>
+              </Field>
+              <Field label="Purchase disclaimer">
+                <Textarea
+                  value={form.disclaimer_purchase || ''}
+                  onChange={(v) => update('disclaimer_purchase', v)}
+                  rows={3}
                 />
-                <Input
-                  value={form.primary_color || ''}
-                  onChange={(v) => update('primary_color', v)}
+              </Field>
+              <Field label="Sale disclaimer">
+                <Textarea
+                  value={form.disclaimer_sale || ''}
+                  onChange={(v) => update('disclaimer_sale', v)}
+                  rows={3}
                 />
-              </div>
-            </Field>
-            <Field label="Purchase disclaimer">
-              <Textarea
-                value={form.disclaimer_purchase || ''}
-                onChange={(v) => update('disclaimer_purchase', v)}
-                rows={3}
-              />
-            </Field>
-            <Field label="Sale disclaimer">
-              <Textarea
-                value={form.disclaimer_sale || ''}
-                onChange={(v) => update('disclaimer_sale', v)}
-                rows={3}
-              />
-            </Field>
-            <Field label="Remortgage disclaimer">
-              <Textarea
-                value={form.disclaimer_remortgage || ''}
-                onChange={(v) => update('disclaimer_remortgage', v)}
-                rows={3}
-              />
-            </Field>
-          </Section>
+              </Field>
+              <Field label="Remortgage disclaimer">
+                <Textarea
+                  value={form.disclaimer_remortgage || ''}
+                  onChange={(v) => update('disclaimer_remortgage', v)}
+                  rows={3}
+                />
+              </Field>
+            </Section>
+          </>
         )}
 
         {tab === 'form' && (
