@@ -10,16 +10,23 @@ import { ClipboardList, X } from 'lucide-react'
 export default function InstructionsPage() {
   const { firmId } = useAuth()
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['instructions', firmId],
+    queryKey: ['instructions', firmId, dateFrom, dateTo],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from('leads')
         .select('*, quotes(reference_code)')
         .eq('firm_id', firmId!)
         .not('instruction_submitted_at', 'is', null)
         .order('instruction_submitted_at', { ascending: false })
+
+      if (dateFrom) query = query.gte('instruction_submitted_at', `${dateFrom}T00:00:00`)
+      if (dateTo) query = query.lte('instruction_submitted_at', `${dateTo}T23:59:59`)
+
+      const { data } = await query
       return (data ?? []) as Lead[]
     },
     enabled: !!firmId,
@@ -30,6 +37,27 @@ export default function InstructionsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Instructions</h1>
         <p className="text-muted-foreground mt-1">Leads that have submitted instruction forms.</p>
+      </div>
+
+      <div className="mb-4 flex flex-col sm:flex-row gap-3">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">From</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">To</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
       </div>
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
