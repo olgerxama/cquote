@@ -259,7 +259,9 @@ async function generateQuotePdfBase64(p: {
   page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
   y -= 16
   page.drawText('DESCRIPTION', { x: left, y, font: bold, size: 10, color: dark })
-  page.drawText('AMOUNT', { x: right - 62, y, font: bold, size: 10, color: dark })
+  const amountRightX = rightInfoX
+  const amountHeader = 'AMOUNT'
+  page.drawText(amountHeader, { x: amountRightX - bold.widthOfTextAtSize(amountHeader, 10), y, font: bold, size: 10, color: dark })
   y -= 10
   page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: navy, thickness: 1 })
   y -= 16
@@ -276,7 +278,7 @@ async function generateQuotePdfBase64(p: {
     }
     page.drawText(desc, { x: left + 4, y, font, size: 11, color: rgb(0.2, 0.2, 0.2) })
     page.drawText(amountText, {
-      x: right - font.widthOfTextAtSize(amountText, 10),
+      x: amountRightX - font.widthOfTextAtSize(amountText, 10),
       y,
       font,
       size: 10,
@@ -287,7 +289,7 @@ async function generateQuotePdfBase64(p: {
   }
 
   y -= 8
-  const totalsValueRight = right - 2
+  const totalsValueRight = amountRightX
   const totalsValueLeft = right - 130
   const totalsLabelRight = totalsValueLeft - 20
   const drawTotalRow = (label: string, value: string, useBold = false) => {
@@ -314,7 +316,7 @@ async function generateQuotePdfBase64(p: {
 
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))
   drawTotalRow('VAT (20%)', formatCurrency(p.vatTotal))
-  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight - 28, y: y + 8 }, color: navy, thickness: 1.5 })
+  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight, y: y + 8 }, color: navy, thickness: 1.5 })
   y -= 6
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
@@ -382,7 +384,7 @@ function quoteAttachmentHtml(p: {
     const bg = i % 2 === 0 ? '#f9fafb' : '#fff'
     rows += '<tr bgcolor="' + bg + '">'
     rows += '<td style="padding:10px 6px;font-size:13px;color:#333">' + it.description + '</td>'
-    rows += '<td align="right" style="padding:10px 6px;font-size:13px;color:#333">' + fmt(it.amount) + '</td>'
+    rows += '<td align="right" width="120" style="padding:10px 6px;font-size:13px;color:#333">' + fmt(it.amount) + '</td>'
     rows += '</tr>'
   }
 
@@ -403,11 +405,11 @@ function quoteAttachmentHtml(p: {
   if (p.propertyAddress) h += '<div style="font-size:12px;color:#888">' + p.propertyAddress + '</div>'
   if (p.propertyValue) h += '<div style="font-size:12px;color:#888">Property value: ' + fmt(p.propertyValue) + '</div>'
   h += '</td></tr></table></td></tr>'
-  h += '<tr><td style="padding:16px 28px 0"><table width="100%" cellpadding="0" cellspacing="0"><tr style="border-bottom:2px solid #1e3a5f"><th align="left" style="padding:8px 6px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Description</th><th align="right" style="padding:8px 6px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Amount</th></tr>' + rows + '</table></td></tr>'
+  h += '<tr><td style="padding:16px 28px 0"><table width="100%" cellpadding="0" cellspacing="0"><tr style="border-bottom:2px solid #1e3a5f"><th align="left" style="padding:8px 6px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Description</th><th align="right" width="120" style="padding:8px 6px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Amount</th></tr>' + rows + '</table></td></tr>'
   h += '<tr><td style="padding:8px 28px 20px"><table width="100%" cellpadding="0" cellspacing="0">'
   h += '<tr><td align="right" style="padding:6px 6px;font-size:13px;color:#888">Subtotal</td><td align="right" width="120" style="padding:6px 6px;font-size:13px;color:#333">' + fmt(p.subtotal) + '</td></tr>'
   h += '<tr><td align="right" style="padding:6px 6px;font-size:13px;color:#888">VAT (20%)</td><td align="right" width="120" style="padding:6px 6px;font-size:13px;color:#333">' + fmt(p.vatTotal) + '</td></tr>'
-  h += '<tr><td colspan="2" style="padding:0 6px 6px"><div style="height:2px;background:#1e3a5f"></div></td></tr>'
+  h += '<tr><td></td><td width="120" style="padding:0 6px 6px"><div style="height:2px;background:#1e3a5f"></div></td></tr>'
   h += '<tr><td align="right" style="padding:14px 6px 10px;font-size:16px;font-weight:700;color:#1e3a5f">Total (inc. VAT)</td><td align="right" width="120" style="padding:14px 6px 10px;font-size:18px;font-weight:700;color:#1e3a5f">' + fmt(p.grandTotal) + '</td></tr>'
   h += '</table></td></tr></table></td></tr></table></body></html>'
   return h

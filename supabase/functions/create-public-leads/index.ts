@@ -263,7 +263,9 @@ async function generateQuotePdfBase64(p: {
   page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
   y -= 16
   page.drawText('DESCRIPTION', { x: left, y, font: bold, size: 10, color: dark })
-  page.drawText('AMOUNT', { x: right - 62, y, font: bold, size: 10, color: dark })
+  const amountRightX = rightInfoX
+  const amountHeader = 'AMOUNT'
+  page.drawText(amountHeader, { x: amountRightX - bold.widthOfTextAtSize(amountHeader, 10), y, font: bold, size: 10, color: dark })
   y -= 10
   page.drawLine({ start: { x: left, y }, end: { x: right, y }, color: navy, thickness: 1 })
   y -= 16
@@ -280,7 +282,7 @@ async function generateQuotePdfBase64(p: {
     }
     page.drawText(desc, { x: left + 4, y, font, size: 11, color: rgb(0.2, 0.2, 0.2) })
     page.drawText(amountText, {
-      x: right - font.widthOfTextAtSize(amountText, 10),
+      x: amountRightX - font.widthOfTextAtSize(amountText, 10),
       y,
       font,
       size: 10,
@@ -291,7 +293,7 @@ async function generateQuotePdfBase64(p: {
   }
 
   y -= 8
-  const totalsValueRight = right - 2
+  const totalsValueRight = amountRightX
   const totalsValueLeft = right - 130
   const totalsLabelRight = totalsValueLeft - 20
   const drawTotalRow = (label: string, value: string, useBold = false) => {
@@ -318,7 +320,7 @@ async function generateQuotePdfBase64(p: {
 
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))
   drawTotalRow('VAT (20%)', formatCurrency(p.vatTotal))
-  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight - 28, y: y + 8 }, color: navy, thickness: 1.5 })
+  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight, y: y + 8 }, color: navy, thickness: 1.5 })
   y -= 6
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
@@ -372,7 +374,7 @@ function customerThankYouHtml(p: {
       rows += '<td style="padding:10px 6px;'
       rows += 'font-size:13px;color:#333">'
       rows += it.description + '</td>'
-      rows += '<td align="right" style="padding:10px 6px;'
+      rows += '<td align="right" width="120" style="padding:10px 6px;'
       rows += 'font-size:13px;color:#333">'
       rows += fmt(it.amount) + '</td>'
       rows += '</tr>\n'
@@ -470,7 +472,7 @@ function customerThankYouHtml(p: {
     h += 'font-size:11px;font-weight:700;'
     h += 'text-transform:uppercase;color:#888">'
     h += 'Description</th>\n'
-    h += '<th align="right" style="padding:8px 6px;'
+    h += '<th align="right" width="120" style="padding:8px 6px;'
     h += 'font-size:11px;font-weight:700;'
     h += 'text-transform:uppercase;color:#888">'
     h += 'Amount</th>\n'
@@ -498,7 +500,7 @@ function customerThankYouHtml(p: {
       h += 'font-size:13px;color:#333">'
       h += fmt(p.vatTotal) + '</td></tr>\n'
     }
-    h += '<tr><td colspan="2" style="padding:0 6px 6px">'
+    h += '<tr><td></td><td width="120" style="padding:0 6px 6px">'
     h += '<div style="height:2px;background:#1e3a5f"></div></td></tr>\n'
     h += '<tr>'
     h += '<td align="right" style="padding:14px 6px 10px;'
