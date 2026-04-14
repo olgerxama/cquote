@@ -122,6 +122,40 @@ function getBaseUrl(): string {
   return Deno.env.get('APP_BASE_URL') || 'http://localhost:5173'
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+async function renderPdfFromHtmlBase64(html: string): Promise<string | null> {
+  const apiKey = Deno.env.get('PDFSHIFT_API_KEY')
+  if (!apiKey) return null
+
+  const res = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${btoa(`api:${apiKey}`)}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      source: html,
+      format: 'A4',
+      margin: '0',
+      use_print: true,
+    }),
+  })
+  if (!res.ok) {
+    throw new Error(`PDFSHIFT failed (${res.status}): ${await res.text()}`)
+  }
+
+  const bytes = new Uint8Array(await res.arrayBuffer())
+  return bytesToBase64(bytes)
+}
+
 // ─── PDF generation ──────────────────────────────────────────────────────
 async function generateQuotePdfBase64(p: {
   firmName: string
@@ -290,12 +324,7 @@ async function generateQuotePdfBase64(p: {
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
   const bytes = await pdf.save()
-  let binary = ''
-  const chunk = 0x8000
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
-  }
-  return btoa(binary)
+  return bytesToBase64(bytes)
 }
 
 // ─── Email templates ─────────────────────────────────────────────────────
@@ -720,7 +749,21 @@ Deno.serve(async (req) => {
         let attachments: EmailAttachment[] | undefined
         if (notifyTotals && existingItems.length > 0) {
           try {
-            const pdfBase64 = await generateQuotePdfBase64({
+            const pdfHtml = customerThankYouHtml({
+              firmName: notifyFirm.name,
+              leadName: existingLead.full_name,
+              leadEmail: existingLead.email,
+              serviceType: existingLead.service_type,
+              propertyValue: existingLead.property_value ? Number(existingLead.property_value) : undefined,
+              referenceCode: existingQuote?.reference_code || undefined,
+              items: existingItems as { description: string; amount: number; is_vatable?: boolean }[],
+              subtotal: notifyTotals ? Number(notifyTotals.subtotal || 0) : undefined,
+              vatTotal: notifyTotals ? Number(notifyTotals.vatTotal || 0) : undefined,
+              grandTotal: notifyTotals?.grandTotal != null ? Number(notifyTotals.grandTotal) : undefined,
+              instructionLink: undefined,
+              hasPdf: false,
+            })
+            const pdfBase64 = (await renderPdfFromHtmlBase64(pdfHtml)) || await generateQuotePdfBase64({
               firmName: notifyFirm.name,
               leadName: existingLead.full_name,
               leadEmail: existingLead.email,
@@ -899,21 +942,35 @@ Deno.serve(async (req) => {
           ? `${baseUrl}/quote/${firm.slug}/instruct?ref=${instructionRef}`
           : undefined
 
-      let attachments: EmailAttachment[] | undefined
-      if (totals && quoteItems?.length) {
-        try {
-          const pdfBase64 = await generateQuotePdfBase64({
-            firmName: firm.name,
-            leadName: lead.full_name,
-            leadEmail: lead.email,
-            serviceType: lead.service_type,
-            propertyValue: lead.property_value ? Number(lead.property_value) : undefined,
-            referenceCode: referenceCode || undefined,
-            items: quoteItems,
-            subtotal: totals.subtotal || 0,
-            vatTotal: totals.vatTotal || 0,
-            grandTotal: totals.grandTotal || 0,
-          })
+        let attachments: EmailAttachment[] | undefined
+        if (totals && quoteItems?.length) {
+          try {
+            const pdfHtml = customerThankYouHtml({
+              firmName: firm.name,
+              leadName: lead.full_name,
+              leadEmail: lead.email,
+              serviceType: lead.service_type,
+              propertyValue: lead.property_value ? Number(lead.property_value) : undefined,
+              referenceCode: referenceCode || undefined,
+              items: quoteItems,
+              subtotal: totals?.subtotal != null ? Number(totals.subtotal) : undefined,
+              vatTotal: totals?.vatTotal != null ? Number(totals.vatTotal) : undefined,
+              grandTotal: totals?.grandTotal != null ? Number(totals.grandTotal) : undefined,
+              instructionLink: undefined,
+              hasPdf: false,
+            })
+            const pdfBase64 = (await renderPdfFromHtmlBase64(pdfHtml)) || await generateQuotePdfBase64({
+              firmName: firm.name,
+              leadName: lead.full_name,
+              leadEmail: lead.email,
+              serviceType: lead.service_type,
+              propertyValue: lead.property_value ? Number(lead.property_value) : undefined,
+              referenceCode: referenceCode || undefined,
+              items: quoteItems,
+              subtotal: totals.subtotal || 0,
+              vatTotal: totals.vatTotal || 0,
+              grandTotal: totals.grandTotal || 0,
+            })
           attachments = [
             {
               filename: `quote-${referenceCode || leadId}.pdf`,

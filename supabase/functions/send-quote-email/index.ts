@@ -119,6 +119,40 @@ function getBaseUrl(): string {
   return Deno.env.get('APP_BASE_URL') || 'http://localhost:5173'
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+async function renderPdfFromHtmlBase64(html: string): Promise<string | null> {
+  const apiKey = Deno.env.get('PDFSHIFT_API_KEY')
+  if (!apiKey) return null
+
+  const res = await fetch('https://api.pdfshift.io/v3/convert/pdf', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${btoa(`api:${apiKey}`)}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      source: html,
+      format: 'A4',
+      margin: '0',
+      use_print: true,
+    }),
+  })
+  if (!res.ok) {
+    throw new Error(`PDFSHIFT failed (${res.status}): ${await res.text()}`)
+  }
+
+  const bytes = new Uint8Array(await res.arrayBuffer())
+  return bytesToBase64(bytes)
+}
+
 // ─── PDF generation (pure JS, runs in Deno edge runtime) ─────────────────
 async function generateQuotePdfBase64(p: {
   firmName: string
@@ -286,12 +320,7 @@ async function generateQuotePdfBase64(p: {
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
   const bytes = await pdf.save()
-  let binary = ''
-  const chunk = 0x8000
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
-  }
-  return btoa(binary)
+  return bytesToBase64(bytes)
 }
 
 function quoteEmailHtml(p: {
@@ -314,6 +343,65 @@ ${p.instructionLink ? `<p>Ready to proceed? Click the button below to instruct u
 <p><a href="${p.instructionLink}" style="display:inline-block;background:#1e3a5f;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;">Instruct Now</a></p>` : ''}
 <p style="color:#666;font-size:12px;margin-top:30px;">${p.documentType === 'invoice' ? 'Please remit payment within the agreed terms.' : 'This is an estimate only and may be subject to change. Please contact us for a full breakdown.'}</p>
 </body></html>`
+}
+
+function quoteAttachmentHtml(p: {
+  firmName: string
+  leadName: string
+  leadEmail: string
+  serviceType: string
+  propertyValue?: number
+  referenceCode?: string
+  items: QuoteItemRow[]
+  subtotal: number
+  vatTotal: number
+  grandTotal: number
+  documentType: string
+}): string {
+  const svcLabel = p.serviceType.replace(/_/g, ' & ').replace(/\b\w/g, (c) => c.toUpperCase())
+  const fmt = (n: number) => {
+    const s = Number(n).toFixed(2)
+    return '£' + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
+  const dateStr = new Date().toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  })
+
+  let rows = ''
+  for (let i = 0; i < p.items.length; i++) {
+    const it = p.items[i]
+    const bg = i % 2 === 0 ? '#f9fafb' : '#fff'
+    rows += '<tr bgcolor="' + bg + '">'
+    rows += '<td style="padding:10px 16px;font-size:13px;color:#333">' + it.description + '</td>'
+    rows += '<td align="right" style="padding:10px 16px;font-size:13px;color:#333">' + fmt(it.amount) + '</td>'
+    rows += '</tr>'
+  }
+
+  let h = ''
+  h += '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>'
+  h += '<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;color:#333"><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px">'
+  h += '<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden">'
+  h += '<tr><td bgcolor="#1e3a5f" style="padding:24px 28px"><table width="100%" cellpadding="0" cellspacing="0"><tr><td valign="top">'
+  h += '<div style="color:#fff;font-size:20px;font-weight:700">' + p.firmName + '</div>'
+  if (p.referenceCode) h += '<div style="color:rgba(255,255,255,0.7);font-size:14px;margin-top:4px;font-family:monospace">' + p.referenceCode + '</div>'
+  h += '</td><td valign="top" align="right">'
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;color:rgba(255,255,255,0.5)">' + (p.documentType === 'invoice' ? 'Invoice' : 'Quote Estimate') + '</div>'
+  h += '<div style="font-size:13px;margin-top:4px;color:rgba(255,255,255,0.7)">' + dateStr + '</div>'
+  h += '</td></tr></table></td></tr>'
+  h += '<tr><td style="padding:24px 28px;border-bottom:1px solid #e5e5e5"><p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#111">Dear ' + p.leadName + ',</p>'
+  h += '<p style="margin:0;font-size:14px;line-height:1.6;color:#555">Thank you for your ' + svcLabel.toLowerCase() + ' enquiry. We have received your details and a member of our team will be in touch shortly.</p></td></tr>'
+  h += '<tr><td style="padding:20px 28px;border-bottom:1px solid #e5e5e5"><table width="100%" cellpadding="0" cellspacing="0"><tr><td valign="top">'
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;color:#888;margin-bottom:4px">Prepared For</div><div style="font-size:14px;font-weight:500;color:#111">' + p.leadName + '</div><div style="font-size:12px;color:#888">' + p.leadEmail + '</div>'
+  h += '</td><td valign="top" align="right"><div style="font-size:11px;font-weight:600;text-transform:uppercase;color:#888;margin-bottom:4px">Service</div><div style="font-size:14px;font-weight:500;color:#111">' + svcLabel + '</div>'
+  if (p.propertyValue) h += '<div style="font-size:12px;color:#888">Property value: ' + fmt(p.propertyValue) + '</div>'
+  h += '</td></tr></table></td></tr>'
+  h += '<tr><td style="padding:16px 16px 0"><table width="100%" cellpadding="0" cellspacing="0"><tr style="border-bottom:2px solid #1e3a5f"><th align="left" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Description</th><th align="right" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Amount</th></tr>' + rows + '</table></td></tr>'
+  h += '<tr><td style="padding:8px 16px 20px"><table width="100%" cellpadding="0" cellspacing="0">'
+  h += '<tr><td align="right" style="padding:6px 16px;font-size:13px;color:#888">Subtotal</td><td align="right" width="120" style="padding:6px 16px;font-size:13px;color:#333">' + fmt(p.subtotal) + '</td></tr>'
+  h += '<tr><td align="right" style="padding:6px 16px;font-size:13px;color:#888">VAT (20%)</td><td align="right" width="120" style="padding:6px 16px;font-size:13px;color:#333">' + fmt(p.vatTotal) + '</td></tr>'
+  h += '<tr style="border-top:2px solid #1e3a5f"><td align="right" style="padding:10px 16px;font-size:16px;font-weight:700;color:#1e3a5f">Total (inc. VAT)</td><td align="right" width="120" style="padding:10px 16px;font-size:18px;font-weight:700;color:#1e3a5f">' + fmt(p.grandTotal) + '</td></tr>'
+  h += '</table></td></tr></table></td></tr></table></body></html>'
+  return h
 }
 
 Deno.serve(async (req) => {
@@ -412,7 +500,20 @@ Deno.serve(async (req) => {
       ]
     } else {
       try {
-        const pdfBase64 = await generateQuotePdfBase64({
+        const attachmentHtml = quoteAttachmentHtml({
+          firmName: firm.name,
+          documentType,
+          leadName: lead.full_name,
+          leadEmail: lead.email,
+          serviceType: lead.service_type,
+          propertyValue: lead.property_value ? Number(lead.property_value) : undefined,
+          referenceCode: quote.reference_code || undefined,
+          items,
+          subtotal: Number(quote.subtotal || totals.subtotal || 0),
+          vatTotal: Number(quote.vat_total || totals.vatTotal || 0),
+          grandTotal: Number(quote.grand_total || totals.grandTotal || 0),
+        })
+        const pdfBase64 = (await renderPdfFromHtmlBase64(attachmentHtml)) || await generateQuotePdfBase64({
           firmName: firm.name,
           documentType,
           leadName: lead.full_name,
