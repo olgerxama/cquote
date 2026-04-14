@@ -68,7 +68,7 @@ export interface FirmUser {
   id: string;
   user_id: string;
   firm_id: string;
-  role: string;
+  role: 'admin' | 'read_only';
   created_at: string;
 }
 

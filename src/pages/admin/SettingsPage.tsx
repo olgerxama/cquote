@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { Plus, Trash2, Search, Copy, ExternalLink } from 'lucide-react'
 import { PUBLIC_FORM_FIELDS } from '@/lib/publicFormFields'
 import { DEFAULT_PUBLIC_FORM_CONFIG } from '@/types'
-import type { Firm, ManualReviewCondition, PublicFormConfig } from '@/types'
+import type { Firm, FirmUser, ManualReviewCondition, PublicFormConfig } from '@/types'
 
 const REVIEW_CONDITION_FIELDS = [
   { value: 'probate_related', label: 'Probate Related' },
@@ -58,10 +58,10 @@ const INSTRUCTION_FORM_FIELDS: Array<{ key: string; label: string }> = [
   { key: 'additional_notes', label: 'Additional Notes' },
 ]
 
-type Tab = 'firm' | 'branding' | 'form' | 'instruction' | 'quote' | 'review' | 'email' | 'embed'
+type Tab = 'firm' | 'branding' | 'form' | 'instruction' | 'team' | 'quote' | 'review' | 'email' | 'embed'
 
 export default function SettingsPage() {
-  const { firmId } = useAuth()
+  const { firmId, user } = useAuth()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('firm')
   const [form, setForm] = useState<Partial<Firm>>({})
@@ -72,6 +72,16 @@ export default function SettingsPage() {
       const { data, error } = await supabase.from('firms').select('*').eq('id', firmId!).single()
       if (error) throw error
       return data as Firm
+    },
+    enabled: !!firmId,
+  })
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['firm-members', firmId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('firm_users').select('*').eq('firm_id', firmId!)
+      if (error) throw error
+      return (data ?? []) as FirmUser[]
     },
     enabled: !!firmId,
   })
@@ -137,6 +147,7 @@ export default function SettingsPage() {
     { key: 'branding', label: 'Branding' },
     { key: 'form', label: 'Public form' },
     { key: 'instruction', label: 'Instruction form' },
+    { key: 'team', label: 'Team' },
     { key: 'quote', label: 'Quote behaviour' },
     { key: 'review', label: 'Manual review' },
     { key: 'email', label: 'Email' },
@@ -253,6 +264,13 @@ export default function SettingsPage() {
           <InstructionFormTab
             config={(form.public_form_config || DEFAULT_PUBLIC_FORM_CONFIG) as PublicFormConfig}
             onConfigChange={updateFormConfig}
+          />
+        )}
+        {tab === 'team' && (
+          <TeamTab
+            firm={firm}
+            members={members}
+            currentUserId={user?.id || null}
           />
         )}
 
@@ -578,6 +596,135 @@ function InstructionFormTab({
         })}
       </div>
     </Section>
+  )
+}
+
+function TeamTab({
+  firm,
+  members,
+  currentUserId,
+}: {
+  firm: Firm
+  members: FirmUser[]
+  currentUserId: string | null
+}) {
+  const queryClient = useQueryClient()
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<'admin' | 'read_only'>('read_only')
+  const currentMember = members.find((m) => m.user_id === currentUserId)
+  const canManage = currentUserId === firm.owner_user_id || currentMember?.role === 'admin'
+
+  const inviteMember = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.functions.invoke('invite-firm-user', {
+        body: { firmId: firm.id, email: email.trim(), role },
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Invitation sent')
+      setEmail('')
+      queryClient.invalidateQueries({ queryKey: ['firm-members', firm.id] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const updateMemberRole = useMutation({
+    mutationFn: async ({ memberId, nextRole }: { memberId: string; nextRole: 'admin' | 'read_only' }) => {
+      const { error } = await supabase
+        .from('firm_users')
+        .update({ role: nextRole })
+        .eq('id', memberId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Role updated')
+      queryClient.invalidateQueries({ queryKey: ['firm-members', firm.id] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const removeMember = useMutation({
+    mutationFn: async (memberId: string) => {
+      const { error } = await supabase.from('firm_users').delete().eq('id', memberId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Member removed')
+      queryClient.invalidateQueries({ queryKey: ['firm-members', firm.id] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  return (
+    <>
+      <Section title="Invite team member">
+        <p className="text-sm text-muted-foreground mb-3">
+          Admin members can manage data and settings (except subscription payments). Read-only members can view everything but cannot make changes.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3">
+          <Input value={email} onChange={setEmail} placeholder="colleague@firm.com" />
+          <Select
+            value={role}
+            onChange={(v) => setRole(v as 'admin' | 'read_only')}
+            options={[
+              { value: 'read_only', label: 'Read-only' },
+              { value: 'admin', label: 'Admin' },
+            ]}
+          />
+          <button
+            onClick={() => inviteMember.mutate()}
+            disabled={!canManage || inviteMember.isPending || !email.trim()}
+            className="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            Invite
+          </button>
+        </div>
+        {!canManage && (
+          <p className="text-xs text-amber-600 mt-2">You have read-only access and cannot manage members.</p>
+        )}
+      </Section>
+
+      <Section title="Current team">
+        <div className="space-y-2">
+          {members.map((m) => {
+            const isOwner = m.user_id === firm.owner_user_id
+            const isSelf = m.user_id === currentUserId
+            return (
+              <div key={m.id} className="flex items-center justify-between border border-border rounded-lg px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium">{m.user_id}{isSelf ? ' (You)' : ''}</div>
+                  <div className="text-xs text-muted-foreground">{isOwner ? 'Owner' : 'Team member'}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={isOwner ? 'admin' : m.role}
+                    disabled={!canManage || isOwner}
+                    onChange={(e) => updateMemberRole.mutate({ memberId: m.id, nextRole: e.target.value as 'admin' | 'read_only' })}
+                    className="rounded-md border border-input bg-background px-2 py-1 text-xs disabled:opacity-50"
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="read_only">Read-only</option>
+                  </select>
+                  {!isOwner && (
+                    <button
+                      onClick={() => removeMember.mutate(m.id)}
+                      disabled={!canManage || removeMember.isPending || isSelf}
+                      className="px-2 py-1 text-xs rounded border border-input hover:bg-muted disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {members.length === 0 && (
+            <p className="text-sm text-muted-foreground">No team members found yet.</p>
+          )}
+        </div>
+      </Section>
+    </>
   )
 }
 
