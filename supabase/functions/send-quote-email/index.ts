@@ -200,8 +200,8 @@ async function generateQuotePdfBase64(p: {
   const rowBg = rgb(0.96, 0.96, 0.96)
   const panelX = 34
   const panelW = width - (panelX * 2)
-  const left = panelX + 26
-  const right = panelX + panelW - 26
+  const left = panelX + 18
+  const right = panelX + panelW - 18
 
   page.drawRectangle({ x: panelX, y: 34, width: panelW, height: height - 68, color: rgb(1, 1, 1) })
 
@@ -236,7 +236,7 @@ async function generateQuotePdfBase64(p: {
   let y = headerY - 18
   page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
   y -= 18
-  const rightInfoX = right - 30
+  const rightInfoX = right - 8
   page.drawText('PREPARED FOR', { x: left, y, font: bold, size: 9, color: muted })
   page.drawText('SERVICE', { x: rightInfoX - bold.widthOfTextAtSize('SERVICE', 9), y, font: bold, size: 9, color: muted })
   y -= 16
@@ -285,7 +285,7 @@ async function generateQuotePdfBase64(p: {
   }
 
   y -= 8
-  const totalsValueRight = right - 24
+  const totalsValueRight = right - 6
   const totalsValueLeft = right - 130
   const totalsLabelRight = totalsValueLeft - 20
   const drawTotalRow = (label: string, value: string, useBold = false) => {
@@ -312,7 +312,7 @@ async function generateQuotePdfBase64(p: {
 
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))
   drawTotalRow('VAT (20%)', formatCurrency(p.vatTotal))
-  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight - 8, y: y + 8 }, color: navy, thickness: 1.5 })
+  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight, y: y + 8 }, color: navy, thickness: 1.5 })
   y -= 6
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
