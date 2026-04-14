@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     const appUrl = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || 'http://localhost:5173'
 
     const inviteResult = await service.auth.admin.inviteUserByEmail(String(email).trim().toLowerCase(), {
-      redirectTo: `${appUrl}/admin/login`,
+      redirectTo: `${appUrl}/admin/accept-invite`,
     })
 
     if (inviteResult.error || !inviteResult.data.user?.id) {

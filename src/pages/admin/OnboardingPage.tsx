@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Scale } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -6,6 +7,7 @@ import { generateSlug } from '@/lib/utils'
 
 export default function OnboardingPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [firmName, setFirmName] = useState('')
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
@@ -30,7 +32,7 @@ export default function OnboardingPage() {
           .maybeSingle()
 
         if (existingLink?.firm_id) {
-          if (!cancelled) window.location.href = '/admin'
+          if (!cancelled) navigate('/admin', { replace: true })
           return
         }
 
@@ -44,7 +46,7 @@ export default function OnboardingPage() {
           await supabase
             .from('firm_users')
             .insert({ user_id: user.id, firm_id: ownedFirm.id, role: 'admin' })
-          if (!cancelled) window.location.href = '/admin'
+          if (!cancelled) navigate('/admin', { replace: true })
           return
         }
       } catch (err) {
@@ -57,7 +59,7 @@ export default function OnboardingPage() {
     return () => {
       cancelled = true
     }
-  }, [user])
+  }, [user, navigate])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -82,7 +84,7 @@ export default function OnboardingPage() {
         .maybeSingle()
 
       if (existingLink?.firm_id) {
-        window.location.href = '/admin'
+        navigate('/admin', { replace: true })
         return
       }
 
@@ -101,7 +103,7 @@ export default function OnboardingPage() {
           setError(repairError.message)
           return
         }
-        window.location.href = '/admin'
+        navigate('/admin', { replace: true })
         return
       }
 
@@ -130,8 +132,7 @@ export default function OnboardingPage() {
         return
       }
 
-      // Full reload so AuthContext re-resolves firmId from the new firm_users row
-      window.location.href = '/admin'
+      navigate('/admin', { replace: true })
     } finally {
       setLoading(false)
     }
