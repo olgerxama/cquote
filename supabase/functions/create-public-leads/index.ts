@@ -369,10 +369,10 @@ function customerThankYouHtml(p: {
       const it = p.items[i]
       const bg = i % 2 === 0 ? '#f9fafb' : '#fff'
       rows += '<tr bgcolor="' + bg + '">'
-      rows += '<td style="padding:10px 10px;'
+      rows += '<td style="padding:10px 6px;'
       rows += 'font-size:13px;color:#333">'
       rows += it.description + '</td>'
-      rows += '<td align="right" style="padding:10px 10px;'
+      rows += '<td align="right" style="padding:10px 6px;'
       rows += 'font-size:13px;color:#333">'
       rows += fmt(it.amount) + '</td>'
       rows += '</tr>\n'
@@ -463,14 +463,14 @@ function customerThankYouHtml(p: {
 
   // — Line items —
   if (rows) {
-    h += '<tr><td style="padding:16px 0 0">\n'
+    h += '<tr><td style="padding:16px 28px 0">\n'
     h += '<table width="100%" cellpadding="0" cellspacing="0">\n'
     h += '<tr style="border-bottom:2px solid #1e3a5f">'
-    h += '<th align="left" style="padding:8px 10px;'
+    h += '<th align="left" style="padding:8px 6px;'
     h += 'font-size:11px;font-weight:700;'
     h += 'text-transform:uppercase;color:#888">'
     h += 'Description</th>\n'
-    h += '<th align="right" style="padding:8px 10px;'
+    h += '<th align="right" style="padding:8px 6px;'
     h += 'font-size:11px;font-weight:700;'
     h += 'text-transform:uppercase;color:#888">'
     h += 'Amount</th>\n'
@@ -482,29 +482,29 @@ function customerThankYouHtml(p: {
 
   // — Totals —
   if (p.grandTotal != null) {
-    h += '<tr><td style="padding:8px 0 20px">\n'
+    h += '<tr><td style="padding:8px 28px 20px">\n'
     h += '<table width="100%" cellpadding="0" cellspacing="0">\n'
     if (p.subtotal != null) {
-      h += '<tr><td align="right" style="padding:6px 10px;'
+      h += '<tr><td align="right" style="padding:6px 6px;'
       h += 'font-size:13px;color:#888">Subtotal</td>\n'
-      h += '<td align="right" width="120" style="padding:6px 10px;'
+      h += '<td align="right" width="120" style="padding:6px 6px;'
       h += 'font-size:13px;color:#333">'
       h += fmt(p.subtotal) + '</td></tr>\n'
     }
     if (p.vatTotal != null) {
-      h += '<tr><td align="right" style="padding:6px 10px;'
+      h += '<tr><td align="right" style="padding:6px 6px;'
       h += 'font-size:13px;color:#888">VAT (20%)</td>\n'
-      h += '<td align="right" width="120" style="padding:6px 10px;'
+      h += '<td align="right" width="120" style="padding:6px 6px;'
       h += 'font-size:13px;color:#333">'
       h += fmt(p.vatTotal) + '</td></tr>\n'
     }
-    h += '<tr><td colspan="2" style="padding:0 10px 6px">'
+    h += '<tr><td colspan="2" style="padding:0 6px 6px">'
     h += '<div style="height:2px;background:#1e3a5f"></div></td></tr>\n'
     h += '<tr>'
-    h += '<td align="right" style="padding:14px 10px 10px;'
+    h += '<td align="right" style="padding:14px 6px 10px;'
     h += 'font-size:16px;font-weight:700;'
     h += 'color:#1e3a5f">Total (inc. VAT)</td>\n'
-    h += '<td align="right" width="120" style="padding:14px 10px 10px;'
+    h += '<td align="right" width="120" style="padding:14px 6px 10px;'
     h += 'font-size:18px;font-weight:700;'
     h += 'color:#1e3a5f">'
     h += fmt(p.grandTotal) + '</td></tr>\n'
@@ -810,6 +810,7 @@ Deno.serve(async (req) => {
             leadEmail: existingLead.email,
             serviceType: existingLead.service_type,
             propertyValue: Number(existingLead.property_value || 0),
+            propertyAddress: String(existingLead.property_postcode || ''),
             referenceCode: existingQuote?.reference_code || undefined,
             items: existingItems.length > 0
               ? (existingItems as { description: string; amount: number; is_vatable?: boolean }[])
@@ -1013,6 +1014,7 @@ Deno.serve(async (req) => {
           leadEmail: lead.email,
           serviceType: lead.service_type,
           propertyValue: lead.property_value ? Number(lead.property_value) : undefined,
+          propertyAddress: String(lead.property_postcode || ''),
           referenceCode: referenceCode || undefined,
           items: quoteItems?.length ? quoteItems : undefined,
           subtotal: totals?.subtotal != null ? Number(totals.subtotal) : undefined,
