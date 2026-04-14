@@ -23,11 +23,21 @@ export default function InstructPage() {
 
   const [submitted, setSubmitted] = useState(false)
   const [details, setDetails] = useState({
+    client_type: 'individual',
+    full_name: '',
+    email: '',
+    phone: '',
     full_address: '',
+    address_line_1: '',
+    address_line_2: '',
+    town_city: '',
+    postcode: '',
     date_of_birth: '',
     national_insurance: '',
     id_type: 'passport',
     id_number: '',
+    id_check_consent: false,
+    source_of_funds: '',
     additional_notes: '',
   })
 
@@ -149,21 +159,143 @@ export default function InstructPage() {
             Please provide the following details to proceed with your instruction to {firm.name}.
           </p>
 
-          <div>
-            {!hiddenFields.has('full_address') && (
-              <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {!hiddenFields.has('client_type') && (
+              <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Full Address {requiredFields.has('full_address') ? '*' : ''}
+                  Client Type {requiredFields.has('client_type') ? '*' : ''}
                 </label>
-                <textarea
-                  required={requiredFields.has('full_address')}
-                  rows={3}
-                  value={details.full_address}
-                  onChange={(e) => setDetails({ ...details, full_address: e.target.value })}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                  placeholder="Enter your full address"
+                <select
+                  required={requiredFields.has('client_type')}
+                  value={details.client_type}
+                  onChange={(e) => setDetails({ ...details, client_type: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="individual">Individual</option>
+                  <option value="joint">Joint</option>
+                  <option value="company">Company</option>
+                </select>
+              </div>
+            )}
+            {!hiddenFields.has('full_name') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Full Name {requiredFields.has('full_name') ? '*' : ''}
+                </label>
+                <input
+                  required={requiredFields.has('full_name')}
+                  value={details.full_name}
+                  onChange={(e) => setDetails({ ...details, full_name: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder={context.lead.full_name || ''}
                 />
-              </>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {!hiddenFields.has('email') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Email {requiredFields.has('email') ? '*' : ''}
+                </label>
+                <input
+                  type="email"
+                  required={requiredFields.has('email')}
+                  value={details.email}
+                  onChange={(e) => setDetails({ ...details, email: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder={context.lead.email || ''}
+                />
+              </div>
+            )}
+            {!hiddenFields.has('phone') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Phone {requiredFields.has('phone') ? '*' : ''}
+                </label>
+                <input
+                  required={requiredFields.has('phone')}
+                  value={details.phone}
+                  onChange={(e) => setDetails({ ...details, phone: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder={context.lead.phone || ''}
+                />
+              </div>
+            )}
+          </div>
+
+          {!hiddenFields.has('full_address') && (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                Full Address {requiredFields.has('full_address') ? '*' : ''}
+              </label>
+              <textarea
+                required={requiredFields.has('full_address')}
+                rows={3}
+                value={details.full_address}
+                onChange={(e) => setDetails({ ...details, full_address: e.target.value })}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                placeholder="Enter your full address"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {!hiddenFields.has('address_line_1') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Address Line 1 {requiredFields.has('address_line_1') ? '*' : ''}
+                </label>
+                <input
+                  required={requiredFields.has('address_line_1')}
+                  value={details.address_line_1}
+                  onChange={(e) => setDetails({ ...details, address_line_1: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            )}
+            {!hiddenFields.has('address_line_2') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Address Line 2 {requiredFields.has('address_line_2') ? '*' : ''}
+                </label>
+                <input
+                  required={requiredFields.has('address_line_2')}
+                  value={details.address_line_2}
+                  onChange={(e) => setDetails({ ...details, address_line_2: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {!hiddenFields.has('town_city') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Town / City {requiredFields.has('town_city') ? '*' : ''}
+                </label>
+                <input
+                  required={requiredFields.has('town_city')}
+                  value={details.town_city}
+                  onChange={(e) => setDetails({ ...details, town_city: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            )}
+            {!hiddenFields.has('postcode') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Postcode {requiredFields.has('postcode') ? '*' : ''}
+                </label>
+                <input
+                  required={requiredFields.has('postcode')}
+                  value={details.postcode}
+                  onChange={(e) => setDetails({ ...details, postcode: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
             )}
           </div>
 
@@ -245,6 +377,38 @@ export default function InstructPage() {
                 placeholder="Anything else we should know..."
               />
             </div>
+          )}
+
+          {!hiddenFields.has('source_of_funds') && (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                Source of Funds {requiredFields.has('source_of_funds') ? '*' : ''}
+              </label>
+              <textarea
+                rows={3}
+                required={requiredFields.has('source_of_funds')}
+                value={details.source_of_funds}
+                onChange={(e) => setDetails({ ...details, source_of_funds: e.target.value })}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                placeholder="How will the transaction be funded?"
+              />
+            </div>
+          )}
+
+          {!hiddenFields.has('id_check_consent') && (
+            <label className="flex items-start gap-3 rounded-lg border border-input bg-background px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                required={requiredFields.has('id_check_consent')}
+                checked={details.id_check_consent}
+                onChange={(e) => setDetails({ ...details, id_check_consent: e.target.checked })}
+                className="mt-1"
+              />
+              <span>
+                I consent to electronic identity and AML checks
+                {requiredFields.has('id_check_consent') ? ' *' : ''}
+              </span>
+            </label>
           )}
 
           <button

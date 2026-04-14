@@ -40,11 +40,21 @@ const SECTION_TOGGLES: Array<{ key: keyof PublicFormConfig; label: string; descr
 ]
 
 const INSTRUCTION_FORM_FIELDS: Array<{ key: string; label: string }> = [
+  { key: 'client_type', label: 'Client Type' },
+  { key: 'full_name', label: 'Full Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phone', label: 'Phone' },
   { key: 'full_address', label: 'Full Address' },
+  { key: 'address_line_1', label: 'Address Line 1' },
+  { key: 'address_line_2', label: 'Address Line 2' },
+  { key: 'town_city', label: 'Town / City' },
+  { key: 'postcode', label: 'Postcode' },
   { key: 'date_of_birth', label: 'Date of Birth' },
   { key: 'national_insurance', label: 'National Insurance Number' },
   { key: 'id_type', label: 'ID Type' },
   { key: 'id_number', label: 'ID Number' },
+  { key: 'id_check_consent', label: 'ID Check Consent' },
+  { key: 'source_of_funds', label: 'Source of Funds' },
   { key: 'additional_notes', label: 'Additional Notes' },
 ]
 
