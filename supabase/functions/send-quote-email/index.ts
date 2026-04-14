@@ -200,8 +200,8 @@ async function generateQuotePdfBase64(p: {
   const rowBg = rgb(0.96, 0.96, 0.96)
   const panelX = 34
   const panelW = width - (panelX * 2)
-  const left = panelX + 18
-  const right = panelX + panelW - 18
+  const left = panelX + 14
+  const right = panelX + panelW - 10
 
   page.drawRectangle({ x: panelX, y: 34, width: panelW, height: height - 68, color: rgb(1, 1, 1) })
 
@@ -285,7 +285,7 @@ async function generateQuotePdfBase64(p: {
   }
 
   y -= 8
-  const totalsValueRight = right - 6
+  const totalsValueRight = right - 2
   const totalsValueLeft = right - 130
   const totalsLabelRight = totalsValueLeft - 20
   const drawTotalRow = (label: string, value: string, useBold = false) => {
@@ -312,7 +312,7 @@ async function generateQuotePdfBase64(p: {
 
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))
   drawTotalRow('VAT (20%)', formatCurrency(p.vatTotal))
-  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight, y: y + 8 }, color: navy, thickness: 1.5 })
+  page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight - 28, y: y + 8 }, color: navy, thickness: 1.5 })
   y -= 6
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
@@ -370,8 +370,8 @@ function quoteAttachmentHtml(p: {
     const it = p.items[i]
     const bg = i % 2 === 0 ? '#f9fafb' : '#fff'
     rows += '<tr bgcolor="' + bg + '">'
-    rows += '<td style="padding:10px 16px;font-size:13px;color:#333">' + it.description + '</td>'
-    rows += '<td align="right" style="padding:10px 16px;font-size:13px;color:#333">' + fmt(it.amount) + '</td>'
+    rows += '<td style="padding:10px 10px;font-size:13px;color:#333">' + it.description + '</td>'
+    rows += '<td align="right" style="padding:10px 10px;font-size:13px;color:#333">' + fmt(it.amount) + '</td>'
     rows += '</tr>'
   }
 
@@ -392,12 +392,12 @@ function quoteAttachmentHtml(p: {
   if (p.propertyAddress) h += '<div style="font-size:12px;color:#888">' + p.propertyAddress + '</div>'
   if (p.propertyValue) h += '<div style="font-size:12px;color:#888">Property value: ' + fmt(p.propertyValue) + '</div>'
   h += '</td></tr></table></td></tr>'
-  h += '<tr><td style="padding:16px 0 0"><table width="100%" cellpadding="0" cellspacing="0"><tr style="border-bottom:2px solid #1e3a5f"><th align="left" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Description</th><th align="right" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Amount</th></tr>' + rows + '</table></td></tr>'
+  h += '<tr><td style="padding:16px 0 0"><table width="100%" cellpadding="0" cellspacing="0"><tr style="border-bottom:2px solid #1e3a5f"><th align="left" style="padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Description</th><th align="right" style="padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;color:#888">Amount</th></tr>' + rows + '</table></td></tr>'
   h += '<tr><td style="padding:8px 0 20px"><table width="100%" cellpadding="0" cellspacing="0">'
-  h += '<tr><td align="right" style="padding:6px 16px;font-size:13px;color:#888">Subtotal</td><td align="right" width="120" style="padding:6px 16px;font-size:13px;color:#333">' + fmt(p.subtotal) + '</td></tr>'
-  h += '<tr><td align="right" style="padding:6px 16px;font-size:13px;color:#888">VAT (20%)</td><td align="right" width="120" style="padding:6px 16px;font-size:13px;color:#333">' + fmt(p.vatTotal) + '</td></tr>'
-  h += '<tr><td colspan="2" style="padding:0 16px 4px"><div style="height:2px;background:#1e3a5f"></div></td></tr>'
-  h += '<tr><td align="right" style="padding:14px 16px 10px;font-size:16px;font-weight:700;color:#1e3a5f">Total (inc. VAT)</td><td align="right" width="120" style="padding:14px 16px 10px;font-size:18px;font-weight:700;color:#1e3a5f">' + fmt(p.grandTotal) + '</td></tr>'
+  h += '<tr><td align="right" style="padding:6px 10px;font-size:13px;color:#888">Subtotal</td><td align="right" width="120" style="padding:6px 10px;font-size:13px;color:#333">' + fmt(p.subtotal) + '</td></tr>'
+  h += '<tr><td align="right" style="padding:6px 10px;font-size:13px;color:#888">VAT (20%)</td><td align="right" width="120" style="padding:6px 10px;font-size:13px;color:#333">' + fmt(p.vatTotal) + '</td></tr>'
+  h += '<tr><td colspan="2" style="padding:0 10px 6px"><div style="height:2px;background:#1e3a5f"></div></td></tr>'
+  h += '<tr><td align="right" style="padding:14px 10px 10px;font-size:16px;font-weight:700;color:#1e3a5f">Total (inc. VAT)</td><td align="right" width="120" style="padding:14px 10px 10px;font-size:18px;font-weight:700;color:#1e3a5f">' + fmt(p.grandTotal) + '</td></tr>'
   h += '</table></td></tr></table></td></tr></table></body></html>'
   return h
 }
