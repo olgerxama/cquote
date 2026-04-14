@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
+        setLoading(true)
         resolveUserContext(session.user.id)
       } else {
         setLoading(false)
@@ -43,9 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        if (lastUserIdRef.current !== session.user.id) {
-          resolveUserContext(session.user.id)
-        }
+        setLoading(true)
+        resolveUserContext(session.user.id)
       } else {
         lastUserIdRef.current = null
         setFirmId(null)
