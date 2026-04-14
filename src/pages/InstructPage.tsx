@@ -5,7 +5,8 @@ import { supabase } from '@/integrations/supabase/client'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Scale, CheckCircle2 } from 'lucide-react'
-import type { Firm, Lead, Quote, QuoteItem } from '@/types'
+import { DEFAULT_PUBLIC_FORM_CONFIG } from '@/types'
+import type { Firm, Lead, PublicFormConfig, Quote, QuoteItem } from '@/types'
 
 interface InstructionContext {
   firm: Firm
@@ -85,6 +86,12 @@ export default function InstructPage() {
 
   const { firm, quote, items } = context
   const primaryColor = firm.primary_color || '#1e3a5f'
+  const instructionConfig = {
+    ...DEFAULT_PUBLIC_FORM_CONFIG,
+    ...((firm.public_form_config as Partial<PublicFormConfig> | null) || {}),
+  }
+  const hiddenFields = new Set(instructionConfig.instruction_hidden_fields || [])
+  const requiredFields = new Set(instructionConfig.instruction_required_fields || [])
 
   if (submitted) {
     return (
@@ -143,74 +150,102 @@ export default function InstructPage() {
           </p>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Full Address *</label>
-            <textarea
-              required
-              rows={3}
-              value={details.full_address}
-              onChange={(e) => setDetails({ ...details, full_address: e.target.value })}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-              placeholder="Enter your full address"
-            />
+            {!hiddenFields.has('full_address') && (
+              <>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Full Address {requiredFields.has('full_address') ? '*' : ''}
+                </label>
+                <textarea
+                  required={requiredFields.has('full_address')}
+                  rows={3}
+                  value={details.full_address}
+                  onChange={(e) => setDetails({ ...details, full_address: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                  placeholder="Enter your full address"
+                />
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Date of Birth *</label>
-              <input
-                type="date"
-                required
-                value={details.date_of_birth}
-                onChange={(e) => setDetails({ ...details, date_of_birth: e.target.value })}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">National Insurance Number</label>
-              <input
-                value={details.national_insurance}
-                onChange={(e) => setDetails({ ...details, national_insurance: e.target.value })}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="e.g. QQ 12 34 56 A"
-              />
-            </div>
+            {!hiddenFields.has('date_of_birth') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Date of Birth {requiredFields.has('date_of_birth') ? '*' : ''}
+                </label>
+                <input
+                  type="date"
+                  required={requiredFields.has('date_of_birth')}
+                  value={details.date_of_birth}
+                  onChange={(e) => setDetails({ ...details, date_of_birth: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            )}
+            {!hiddenFields.has('national_insurance') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  National Insurance Number {requiredFields.has('national_insurance') ? '*' : ''}
+                </label>
+                <input
+                  required={requiredFields.has('national_insurance')}
+                  value={details.national_insurance}
+                  onChange={(e) => setDetails({ ...details, national_insurance: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="e.g. QQ 12 34 56 A"
+                />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">ID Type *</label>
-              <select
-                required
-                value={details.id_type}
-                onChange={(e) => setDetails({ ...details, id_type: e.target.value })}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="passport">Passport</option>
-                <option value="driving_licence">Driving Licence</option>
-                <option value="national_id">National ID Card</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">ID Number *</label>
-              <input
-                required
-                value={details.id_number}
-                onChange={(e) => setDetails({ ...details, id_number: e.target.value })}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
+            {!hiddenFields.has('id_type') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  ID Type {requiredFields.has('id_type') ? '*' : ''}
+                </label>
+                <select
+                  required={requiredFields.has('id_type')}
+                  value={details.id_type}
+                  onChange={(e) => setDetails({ ...details, id_type: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="passport">Passport</option>
+                  <option value="driving_licence">Driving Licence</option>
+                  <option value="national_id">National ID Card</option>
+                </select>
+              </div>
+            )}
+            {!hiddenFields.has('id_number') && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  ID Number {requiredFields.has('id_number') ? '*' : ''}
+                </label>
+                <input
+                  required={requiredFields.has('id_number')}
+                  value={details.id_number}
+                  onChange={(e) => setDetails({ ...details, id_number: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Additional Notes</label>
-            <textarea
-              rows={3}
-              value={details.additional_notes}
-              onChange={(e) => setDetails({ ...details, additional_notes: e.target.value })}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-              placeholder="Anything else we should know..."
-            />
-          </div>
+          {!hiddenFields.has('additional_notes') && (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                Additional Notes {requiredFields.has('additional_notes') ? '*' : ''}
+              </label>
+              <textarea
+                rows={3}
+                required={requiredFields.has('additional_notes')}
+                value={details.additional_notes}
+                onChange={(e) => setDetails({ ...details, additional_notes: e.target.value })}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                placeholder="Anything else we should know..."
+              />
+            </div>
+          )}
 
           <button
             type="submit"

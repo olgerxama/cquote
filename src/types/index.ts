@@ -213,6 +213,7 @@ export interface AdditionalInfo {
   auction_purchase: YesNo;
   probate_related: YesNo;
   speed_essential: YesNo;
+  full_address: string;
   lender_name: string;
   source_of_funds_notes: string;
   chain_related_notes: string;
@@ -295,7 +296,7 @@ export const DEFAULT_PUBLIC_FORM_CONFIG: PublicFormConfig = {
   hidden_fields: [],
   required_fields: [],
   instruction_hidden_fields: [],
-  instruction_required_fields: [],
+  instruction_required_fields: ['full_address', 'date_of_birth', 'id_type', 'id_number'],
 };
 
 export const ANSWER_LABELS: Record<string, string> = {
@@ -325,6 +326,7 @@ export const ANSWER_LABELS: Record<string, string> = {
   auction_purchase: 'Auction Purchase',
   probate_related: 'Probate Related',
   speed_essential: 'Urgency Essential',
+  full_address: 'Full Address',
   lender_name: 'Lender Name',
   source_of_funds_notes: 'Source of Funds',
   chain_related_notes: 'Chain Notes',

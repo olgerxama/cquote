@@ -132,6 +132,23 @@ export default function AdditionalInfoSection({
           </div>
         )}
 
+        {!isHidden('full_address') && (
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-foreground mb-1.5">
+              Full Address
+            </label>
+            <textarea
+              className={inputClassName}
+              rows={3}
+              value={data.full_address}
+              onChange={(e) =>
+                onChange({ full_address: e.target.value })
+              }
+              placeholder="Enter full correspondence or property address"
+            />
+          </div>
+        )}
+
         {!isHidden('lender_name') && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1.5">
