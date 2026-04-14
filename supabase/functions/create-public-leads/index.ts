@@ -261,7 +261,7 @@ async function generateQuotePdfBase64(p: {
   y -= 24
 
   page.drawLine({ start: { x: panelX, y }, end: { x: panelX + panelW, y }, color: border, thickness: 1 })
-  y -= 16
+  y -= 20
   page.drawText('DESCRIPTION', { x: left, y, font: bold, size: 10, color: dark })
   const amountRightX = rightInfoX
   const amountHeader = 'AMOUNT'
@@ -321,7 +321,7 @@ async function generateQuotePdfBase64(p: {
   drawTotalRow('Subtotal', formatCurrency(p.subtotal))
   drawTotalRow('VAT (20%)', formatCurrency(p.vatTotal))
   page.drawLine({ start: { x: totalsValueLeft, y: y + 8 }, end: { x: totalsValueRight, y: y + 8 }, color: navy, thickness: 1.5 })
-  y -= 6
+  y -= 10
   drawTotalRow('Total (inc. VAT)', formatCurrency(p.grandTotal), true)
 
   const footerY = 48
@@ -470,7 +470,7 @@ function customerThankYouHtml(p: {
 
   // — Line items —
   if (rows) {
-    h += '<tr><td style="padding:16px 28px 0">\n'
+    h += '<tr><td style="padding:20px 28px 0">\n'
     h += '<table width="100%" cellpadding="0" cellspacing="0">\n'
     h += '<tr style="border-bottom:2px solid #1e3a5f">'
     h += '<th align="left" style="padding:8px 6px;'
@@ -505,13 +505,13 @@ function customerThankYouHtml(p: {
       h += 'font-size:13px;color:#333">'
       h += fmt(p.vatTotal) + '</td></tr>\n'
     }
-    h += '<tr><td></td><td width="120" style="padding:0 6px 6px">'
+    h += '<tr><td></td><td width="120" style="padding:0 6px 10px">'
     h += '<div style="height:2px;background:#1e3a5f"></div></td></tr>\n'
     h += '<tr>'
-    h += '<td align="right" style="padding:14px 6px 10px;'
+    h += '<td align="right" style="padding:16px 6px 10px;'
     h += 'font-size:16px;font-weight:700;'
     h += 'color:#1e3a5f">Total (inc. VAT)</td>\n'
-    h += '<td align="right" width="120" style="padding:14px 6px 10px;'
+    h += '<td align="right" width="120" style="padding:16px 6px 10px;'
     h += 'font-size:18px;font-weight:700;'
     h += 'color:#1e3a5f">'
     h += fmt(p.grandTotal) + '</td></tr>\n'
