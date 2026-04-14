@@ -278,9 +278,9 @@ async function generateQuotePdfBase64(p: {
     const isDiscount = amt < 0
     const amountText = `${isDiscount ? '−' : ''}${formatCurrency(Math.abs(amt))}`
     if (row % 2 === 0) {
-      page.drawRectangle({ x: left - 10, y: y - 8, width: right - left + 20, height: 22, color: rowBg })
+      page.drawRectangle({ x: left, y: y - 8, width: right - left, height: 22, color: rowBg })
     }
-    page.drawText(desc, { x: left + 4, y, font, size: 11, color: rgb(0.2, 0.2, 0.2) })
+    page.drawText(desc, { x: left + 6, y, font, size: 11, color: rgb(0.2, 0.2, 0.2) })
     page.drawText(amountText, {
       x: amountRightX - font.widthOfTextAtSize(amountText, 10),
       y,
