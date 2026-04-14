@@ -92,8 +92,13 @@ export default function SettingsPage() {
   }
 
   function updateFormConfig<K extends keyof PublicFormConfig>(key: K, value: PublicFormConfig[K]) {
-    const current = (form.public_form_config || DEFAULT_PUBLIC_FORM_CONFIG) as PublicFormConfig
-    update('public_form_config', { ...current, [key]: value })
+    setForm((prev) => {
+      const current = (prev.public_form_config || DEFAULT_PUBLIC_FORM_CONFIG) as PublicFormConfig
+      return {
+        ...prev,
+        public_form_config: { ...current, [key]: value },
+      }
+    })
   }
 
   function addReviewCondition() {
@@ -445,7 +450,7 @@ function FormTab({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 max-h-96 overflow-y-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
           {filteredFields.map((f) => {
             const hidden = hiddenSet.has(f.key)
             return (
@@ -537,7 +542,7 @@ function InstructionFormTab({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 max-h-96 overflow-y-auto">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
         {filteredFields.map((f) => {
           const hidden = hiddenSet.has(f.key)
           return (
