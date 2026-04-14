@@ -122,6 +122,10 @@ function getBaseUrl(): string {
   return Deno.env.get('APP_BASE_URL') || 'http://localhost:5173'
 }
 
+function normalizeMoney(value: number): number {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = ''
   const chunk = 0x8000
@@ -176,7 +180,7 @@ async function generateQuotePdfBase64(p: {
   grandTotal: number
 }): Promise<string> {
   const formatCurrency = (value: number): string => {
-    const fixed = Number(value || 0).toFixed(2)
+    const fixed = normalizeMoney(value).toFixed(2)
     const [whole, decimals] = fixed.split('.')
     return `£${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decimals}`
   }
@@ -357,7 +361,7 @@ function customerThankYouHtml(p: {
     .replace(/_/g, ' & ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
   const fmt = (n: number) => {
-    const s = Number(n).toFixed(2)
+    const s = normalizeMoney(n).toFixed(2)
     return '£' + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   }
   const d = new Date()
@@ -575,7 +579,7 @@ function notificationEmailHtml(p: {
   const sc = p.status === 'review' ? '#d97706' : '#059669'
   const sl = p.status === 'review' ? 'Manual Review' : 'New Lead'
   const fmt = (n: number) => {
-    const s = Number(n).toFixed(2)
+    const s = normalizeMoney(n).toFixed(2)
     return '£' + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   }
 

@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
     try {
       const result = await sendEmail({
         to: lead.email,
-        from: fromEmail,
+        from: firm.reply_to_email || fromEmail,
         fromName: firm.sender_display_name || firm.name,
         subject: `Instruction received — ${firm.name}`,
         html: instructionCustomerEmailHtml({

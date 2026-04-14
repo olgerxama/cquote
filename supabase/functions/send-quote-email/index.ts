@@ -119,6 +119,10 @@ function getBaseUrl(): string {
   return Deno.env.get('APP_BASE_URL') || 'http://localhost:5173'
 }
 
+function normalizeMoney(value: number): number {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = ''
   const chunk = 0x8000
@@ -174,7 +178,7 @@ async function generateQuotePdfBase64(p: {
   grandTotal: number
 }): Promise<string> {
   const formatCurrency = (value: number): string => {
-    const fixed = Number(value || 0).toFixed(2)
+    const fixed = normalizeMoney(value).toFixed(2)
     const [whole, decimals] = fixed.split('.')
     return `£${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decimals}`
   }
@@ -348,7 +352,7 @@ function quoteEmailHtml(p: {
 <p>Dear ${p.leadName},</p>
 <p>Thank you for your ${p.serviceType.replace('_', ' & ')} enquiry. Please find your ${p.documentType === 'invoice' ? 'invoice' : 'quote estimate'} attached as a PDF.</p>
 ${p.referenceCode ? `<p><strong>Reference:</strong> ${p.referenceCode}</p>` : ''}
-<p style="font-size:24px;font-weight:bold;color:#1e3a5f;">Total: &pound;${p.grandTotal.toFixed(2)} (inc. VAT)</p>
+<p style="font-size:24px;font-weight:bold;color:#1e3a5f;">Total: &pound;${normalizeMoney(p.grandTotal).toFixed(2)} (inc. VAT)</p>
 ${p.instructionLink ? `<p>Ready to proceed? Click the button below to instruct us:</p>
 <p><a href="${p.instructionLink}" style="display:inline-block;background:#1e3a5f;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;">Instruct Now</a></p>` : ''}
 <p style="color:#666;font-size:12px;margin-top:30px;">${p.documentType === 'invoice' ? 'Please remit payment within the agreed terms.' : 'This is an estimate only and may be subject to change. Please contact us for a full breakdown.'}</p>
@@ -371,7 +375,7 @@ function quoteAttachmentHtml(p: {
 }): string {
   const svcLabel = p.serviceType.replace(/_/g, ' & ').replace(/\b\w/g, (c) => c.toUpperCase())
   const fmt = (n: number) => {
-    const s = Number(n).toFixed(2)
+    const s = normalizeMoney(n).toFixed(2)
     return '£' + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   }
   const dateStr = new Date().toLocaleDateString('en-GB', {
