@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/integrations/supabase/client'
@@ -5,33 +6,47 @@ import { formatDate } from '@/lib/utils'
 import { Building2, ExternalLink } from 'lucide-react'
 import type { Firm } from '@/types'
 
+const PAGE_SIZE = 25
+
 export default function OwnerFirmsPage() {
-  const { data: firms = [], isLoading } = useQuery({
-    queryKey: ['owner-firms'],
+  const [page, setPage] = useState(1)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['owner-firms', page],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, count, error } = await supabase
         .from('firms')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
-      return (data ?? []) as Firm[]
+        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
+      if (error) throw error
+      return { rows: (data ?? []) as Firm[], total: count ?? 0 }
     },
   })
 
+  const firms = data?.rows ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  const firmIds = useMemo(() => (data?.rows ?? []).map((f) => f.id), [data?.rows])
+
   const { data: leadsMap = {} } = useQuery({
-    queryKey: ['owner-leads-counts'],
+    queryKey: ['owner-leads-counts-page', firmIds.join(',')],
     queryFn: async () => {
-      const { data } = await supabase.from('leads').select('firm_id')
+      if (firmIds.length === 0) return {}
+      const { data } = await supabase.from('leads').select('firm_id').in('firm_id', firmIds)
       const map: Record<string, number> = {}
       data?.forEach((l) => { map[l.firm_id] = (map[l.firm_id] || 0) + 1 })
       return map
     },
+    enabled: firmIds.length > 0,
   })
 
   return (
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">All Firms</h1>
-        <p className="text-muted-foreground mt-1">Platform-wide firm management.</p>
+        <p className="text-muted-foreground mt-1">Paginated platform-wide firm management.</p>
       </div>
 
       {isLoading ? (
@@ -85,6 +100,26 @@ export default function OwnerFirmsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/20">
+            <p className="text-xs text-muted-foreground">Showing page {page} of {totalPages} ({total} firms)</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="rounded-md border border-input px-3 py-1.5 text-sm disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="rounded-md border border-input px-3 py-1.5 text-sm disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       )}
