@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     const { data: firm } = await service
       .from('firms')
-      .select('owner_user_id')
+      .select('owner_user_id,name')
       .eq('id', firmId)
       .maybeSingle()
 
@@ -73,8 +73,20 @@ Deno.serve(async (req) => {
     const appUrl = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || 'http://localhost:5173'
 
     const normalizedEmail = String(email).trim().toLowerCase()
+    const redirectTo = `${appUrl}/admin/accept-invite`
+    const inviterName =
+      authUser.user.user_metadata?.full_name ||
+      authUser.user.user_metadata?.name ||
+      authUser.user.email ||
+      'A team member'
+    const roleLabel = role === 'admin' ? 'Admin' : 'Read-only'
     const inviteResult = await service.auth.admin.inviteUserByEmail(normalizedEmail, {
-      redirectTo: `${appUrl}/admin/accept-invite`,
+      redirectTo,
+      data: {
+        firm_name: firm?.name || 'your firm',
+        inviter_name: inviterName,
+        member_role: roleLabel,
+      },
     })
 
     let invitedUserId = inviteResult.data.user?.id || null

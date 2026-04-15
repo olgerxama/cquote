@@ -615,13 +615,14 @@ function TeamTab({
 
   const inviteMember = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.functions.invoke('invite-firm-user', {
+      const { data, error } = await supabase.functions.invoke('invite-firm-user', {
         body: { firmId: firm.id, email: email.trim(), role },
       })
       if (error) throw error
+      return data as { message?: string }
     },
-    onSuccess: () => {
-      toast.success('Invitation sent')
+    onSuccess: (data) => {
+      toast.success(data?.message || 'Invitation sent')
       setEmail('')
       queryClient.invalidateQueries({ queryKey: ['firm-members', firm.id] })
     },
@@ -660,6 +661,12 @@ function TeamTab({
       <Section title="Invite team member">
         <p className="text-sm text-muted-foreground mb-3">
           Admin members can manage data and settings (except subscription payments). Read-only members can view everything but cannot make changes.
+        </p>
+        <p className="text-xs text-muted-foreground mb-3">
+          Invite emails are sent by Supabase Auth. You can fully customize that template in your Supabase dashboard and use metadata keys like
+          <code className="mx-1 rounded bg-muted px-1 py-0.5">firm_name</code>,
+          <code className="mx-1 rounded bg-muted px-1 py-0.5">inviter_name</code>, and
+          <code className="mx-1 rounded bg-muted px-1 py-0.5">member_role</code>.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3">
           <Input value={email} onChange={setEmail} placeholder="colleague@firm.com" />
