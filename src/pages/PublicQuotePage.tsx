@@ -9,6 +9,7 @@ import SaleSection from '@/components/quote/SaleSection'
 import RemortgageSection from '@/components/quote/RemortgageSection'
 import AdditionalInfoSection from '@/components/quote/AdditionalInfoSection'
 import { formatCurrency } from '@/lib/utils'
+import { hasProfessionalAccess } from '@/lib/billing'
 import { toast } from 'sonner'
 import { Scale, Send, FileText } from 'lucide-react'
 import type {
@@ -105,6 +106,8 @@ export default function PublicQuotePage() {
   const config: PublicFormConfig = useMemo(() => {
     return { ...DEFAULT_CONFIG, ...(firm?.public_form_config as Partial<PublicFormConfig> | null) }
   }, [firm])
+  const hasProPlanAccess = useMemo(() => (firm ? hasProfessionalAccess(firm) : false), [firm])
+  const canUseDiscountCode = hasProPlanAccess && config.show_discount_code
 
   const availableServices = useMemo(() => {
     const services: ServiceType[] = []
@@ -145,6 +148,7 @@ export default function PublicQuotePage() {
 
   function checkManualReview(): boolean {
     if (!firm) return false
+    if (!hasProPlanAccess) return true
     if (firm.require_admin_review) return true
     const conditions = (firm.manual_review_conditions ?? []) as ManualReviewCondition[]
     if (conditions.length === 0) return false
@@ -204,7 +208,8 @@ export default function PublicQuotePage() {
     setSubmitting(true)
 
     const formData = form.getFormData()
-    const result = calculateQuoteWithFallback(formData, bands, extras, validatedDiscount)
+    const effectiveDiscount = canUseDiscountCode ? validatedDiscount : null
+    const result = calculateQuoteWithFallback(formData, bands, extras, effectiveDiscount)
     const isReview = checkManualReview() || result.noMatchFallback
 
     const leadPayload = {
@@ -222,7 +227,7 @@ export default function PublicQuotePage() {
       estimated_total: isReview ? null : result.breakdown.grandTotal,
       status: isReview ? 'review' : 'new',
       answers: form.getAnswersJson(),
-      discount_code_id: validatedDiscount?.id || null,
+      discount_code_id: effectiveDiscount?.id || null,
     }
 
     try {
@@ -232,7 +237,7 @@ export default function PublicQuotePage() {
       // Emails are triggered server-side via pg_net (no browser involved).
       const rpcPromise = supabase.rpc('create_public_lead', {
         p_lead: leadPayload,
-        p_discount_code_id: validatedDiscount?.id || null,
+        p_discount_code_id: effectiveDiscount?.id || null,
         p_totals: isReview ? null : {
           subtotal: result.breakdown.subtotal,
           vatTotal: result.breakdown.vatAmount,
@@ -307,7 +312,7 @@ export default function PublicQuotePage() {
   // Submitted state — invoice-style layout
   if (submitted && quoteResult) {
     const serviceLabel = form.serviceType.replace(/_/g, ' & ').replace(/\b\w/g, c => c.toUpperCase())
-    const isManualReview = quoteResult.noMatchFallback
+    const isManualReview = quoteResult.noMatchFallback || !hasProPlanAccess || !firm.show_instant_quote
 
     return (
       <div className={`bg-muted/30 ${isEmbed ? 'p-4' : 'min-h-screen py-8 px-4'}`}>
@@ -532,7 +537,7 @@ export default function PublicQuotePage() {
           )}
 
           {/* Discount Code */}
-          {config.show_discount_code && (
+          {canUseDiscountCode && (
             <div>
               <label className="block text-sm font-medium text-foreground mb-1.5">Discount Code</label>
               <div className="flex gap-2">

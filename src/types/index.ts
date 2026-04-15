@@ -60,6 +60,8 @@ export interface Firm {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   stripe_subscription_status: string | null;
+  stripe_subscription_current_period_end: string | null;
+  stripe_subscription_cancel_at_period_end: boolean;
   public_form_config: PublicFormConfig;
   auto_send_quote_emails: boolean;
 }
