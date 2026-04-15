@@ -61,7 +61,7 @@ const INSTRUCTION_FORM_FIELDS: Array<{ key: string; label: string }> = [
 type Tab = 'firm' | 'form' | 'instruction' | 'team' | 'quote' | 'review' | 'email' | 'embed'
 
 export default function SettingsPage() {
-  const { firmId, user } = useAuth()
+  const { firmId, user, firmRole, isPlatformOwner } = useAuth()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('firm')
   const [form, setForm] = useState<Partial<Firm>>({})
@@ -99,6 +99,10 @@ export default function SettingsPage() {
 
   const save = useMutation({
     mutationFn: async (patch: Partial<Firm>) => {
+      const canManage = isPlatformOwner || firmRole === 'admin'
+      if (!canManage) {
+        throw new Error('Read-only accounts cannot change settings.')
+      }
       const { error } = await supabase.from('firms').update(patch).eq('id', firmId!)
       if (error) throw error
     },
@@ -143,6 +147,7 @@ export default function SettingsPage() {
 
   if (isLoading) return <div className="text-muted-foreground">Loading…</div>
   if (!firm) return <div className="text-muted-foreground">Firm not found</div>
+  const canManageSettings = isPlatformOwner || user?.id === firm.owner_user_id || firmRole === 'admin'
 
   const tabs: Array<{ key: Tab; label: string }> = [
     { key: 'firm', label: 'Firm' },
@@ -162,6 +167,11 @@ export default function SettingsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
         <p className="text-muted-foreground mt-1">Configure your firm, quote form, and embedding options.</p>
+        {!canManageSettings && (
+          <p className="mt-2 text-sm text-amber-700">
+            You have read-only access. Changes are disabled for this account.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-1 border-b border-border mb-6">
@@ -384,7 +394,7 @@ export default function SettingsPage() {
           </button>
           <button
             onClick={() => save.mutate(form)}
-            disabled={save.isPending || !isDirty}
+            disabled={!canManageSettings || save.isPending || !isDirty}
             className="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {save.isPending ? 'Saving…' : 'Save changes'}

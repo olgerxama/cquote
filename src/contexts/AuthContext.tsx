@@ -7,6 +7,7 @@ interface AuthContextType {
   session: Session | null
   loading: boolean
   firmId: string | null
+  firmRole: 'admin' | 'read_only' | null
   isPlatformOwner: boolean
   signOut: () => Promise<void>
 }
@@ -16,6 +17,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   loading: true,
   firmId: null,
+  firmRole: null,
   isPlatformOwner: false,
   signOut: async () => {},
 })
@@ -25,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [firmId, setFirmId] = useState<string | null>(null)
+  const [firmRole, setFirmRole] = useState<'admin' | 'read_only' | null>(null)
   const [isPlatformOwner, setIsPlatformOwner] = useState(false)
   const lastUserIdRef = useRef<string | null>(null)
 
@@ -47,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!session?.user) {
         lastUserIdRef.current = null
         setFirmId(null)
+        setFirmRole(null)
         setIsPlatformOwner(false)
         setLoading(false)
         return
@@ -73,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const preferredFirmId = localStorage.getItem('cq_preferred_firm_id')
       let resolvedFirmId: string | null = null
+      let isOwnerForResolvedFirm = false
 
       // 1) If a preferred firm was recently set (e.g. invite accept), honor it
       // only if the user is actually linked to it.
@@ -118,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .eq('owner_user_id', userId)
           .maybeSingle()
         resolvedFirmId = ownedFirmResult.data?.id ?? null
+        isOwnerForResolvedFirm = !!ownedFirmResult.data?.id
       }
 
       setFirmId(resolvedFirmId)
@@ -126,6 +132,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         localStorage.removeItem('cq_preferred_firm_id')
       }
+
+      let resolvedFirmRole: 'admin' | 'read_only' | null = null
+      if (resolvedFirmId) {
+        if (isOwnerForResolvedFirm) {
+          resolvedFirmRole = 'admin'
+        } else {
+          const roleResult = await supabase
+            .from('firm_users')
+            .select('role')
+            .eq('firm_id', resolvedFirmId)
+            .eq('user_id', userId)
+            .limit(1)
+            .maybeSingle()
+          resolvedFirmRole = (roleResult.data?.role as 'admin' | 'read_only' | null) ?? null
+        }
+      }
+      setFirmRole(resolvedFirmRole)
 
       // platform_owner check is best-effort: failure must not block login
       try {
@@ -139,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch {
       setFirmId(null)
+      setFirmRole(null)
       setIsPlatformOwner(false)
     } finally {
       setLoading(false)
@@ -150,11 +174,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     setSession(null)
     setFirmId(null)
+    setFirmRole(null)
     setIsPlatformOwner(false)
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, firmId, isPlatformOwner, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, firmId, firmRole, isPlatformOwner, signOut }}>
       {children}
     </AuthContext.Provider>
   )

@@ -31,7 +31,8 @@ const COMMON_EXTRAS = [
 type Tab = 'bands' | 'extras' | 'codes'
 
 export default function PricingPage() {
-  const { firmId } = useAuth()
+  const { firmId, firmRole, isPlatformOwner } = useAuth()
+  const canManage = firmRole === 'admin' || isPlatformOwner
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('bands')
 
@@ -40,6 +41,11 @@ export default function PricingPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Pricing</h1>
         <p className="text-muted-foreground mt-1">Configure fee bands, extras, and discount codes.</p>
+        {!canManage && (
+          <p className="mt-2 text-sm text-amber-700">
+            You have read-only access. Pricing changes are disabled for your account.
+          </p>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-border mb-6">
@@ -56,14 +62,14 @@ export default function PricingPage() {
         ))}
       </div>
 
-      {tab === 'bands' && <BandsTab firmId={firmId!} queryClient={queryClient} />}
-      {tab === 'extras' && <ExtrasTab firmId={firmId!} queryClient={queryClient} />}
-      {tab === 'codes' && <CodesTab firmId={firmId!} queryClient={queryClient} />}
+      {tab === 'bands' && <BandsTab firmId={firmId!} queryClient={queryClient} canManage={canManage} />}
+      {tab === 'extras' && <ExtrasTab firmId={firmId!} queryClient={queryClient} canManage={canManage} />}
+      {tab === 'codes' && <CodesTab firmId={firmId!} queryClient={queryClient} canManage={canManage} />}
     </div>
   )
 }
 
-function BandsTab({ firmId, queryClient }: { firmId: string; queryClient: ReturnType<typeof useQueryClient> }) {
+function BandsTab({ firmId, queryClient, canManage }: { firmId: string; queryClient: ReturnType<typeof useQueryClient>; canManage: boolean }) {
   const [showDialog, setShowDialog] = useState(false)
   const [editing, setEditing] = useState<PricingBand | null>(null)
   const [form, setForm] = useState({ service_type: 'purchase' as ServiceType, min_value: 0, max_value: 500000, base_fee: 0 })
@@ -78,6 +84,7 @@ function BandsTab({ firmId, queryClient }: { firmId: string; queryClient: Return
 
   const save = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
       if (editing) {
         const { error } = await supabase.from('pricing_bands').update(form).eq('id', editing.id)
         if (error) throw error
@@ -97,6 +104,7 @@ function BandsTab({ firmId, queryClient }: { firmId: string; queryClient: Return
 
   const del = useMutation({
     mutationFn: async (id: string) => {
+      if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
       const { error } = await supabase.from('pricing_bands').delete().eq('id', id)
       if (error) throw error
     },
@@ -126,7 +134,7 @@ function BandsTab({ firmId, queryClient }: { firmId: string; queryClient: Return
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <button onClick={openNew} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+        <button disabled={!canManage} onClick={openNew} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           <Plus className="h-4 w-4" /> Add Band
         </button>
       </div>
@@ -152,8 +160,12 @@ function BandsTab({ firmId, queryClient }: { firmId: string; queryClient: Return
                 <td className="px-5 py-3 text-sm">{formatCurrency(Number(b.max_value))}</td>
                 <td className="px-5 py-3 text-sm font-medium">{formatCurrency(Number(b.base_fee))}</td>
                 <td className="px-5 py-3 text-right">
-                  <button onClick={() => openEdit(b)} className="text-muted-foreground hover:text-foreground mr-2"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => del.mutate(b.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                  {canManage && (
+                    <>
+                      <button onClick={() => openEdit(b)} className="text-muted-foreground hover:text-foreground mr-2"><Pencil className="h-4 w-4" /></button>
+                      <button onClick={() => del.mutate(b.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -161,7 +173,7 @@ function BandsTab({ firmId, queryClient }: { firmId: string; queryClient: Return
         </table>
       </div>
 
-      {showDialog && (
+      {showDialog && canManage && (
         <Dialog title={editing ? 'Edit Band' : 'Add Band'} onClose={() => setShowDialog(false)}>
           <div className="space-y-4">
             <Field label="Service Type">
@@ -194,7 +206,7 @@ function BandsTab({ firmId, queryClient }: { firmId: string; queryClient: Return
   )
 }
 
-function ExtrasTab({ firmId, queryClient }: { firmId: string; queryClient: ReturnType<typeof useQueryClient> }) {
+function ExtrasTab({ firmId, queryClient, canManage }: { firmId: string; queryClient: ReturnType<typeof useQueryClient>; canManage: boolean }) {
   const [showDialog, setShowDialog] = useState(false)
   const [editing, setEditing] = useState<PricingExtra | null>(null)
   const [form, setForm] = useState({
@@ -219,6 +231,7 @@ function ExtrasTab({ firmId, queryClient }: { firmId: string; queryClient: Retur
 
   const save = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
       const payload = {
         ...form,
         service_type: form.service_type || null,
@@ -244,6 +257,7 @@ function ExtrasTab({ firmId, queryClient }: { firmId: string; queryClient: Retur
 
   const del = useMutation({
     mutationFn: async (id: string) => {
+      if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
       const { error } = await supabase.from('pricing_extras').delete().eq('id', id)
       if (error) throw error
     },
@@ -255,6 +269,7 @@ function ExtrasTab({ firmId, queryClient }: { firmId: string; queryClient: Retur
 
   const bulkAdd = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
       const payload = COMMON_EXTRAS.map((e) => ({
         ...e,
         firm_id: firmId,
@@ -297,10 +312,10 @@ function ExtrasTab({ firmId, queryClient }: { firmId: string; queryClient: Retur
   return (
     <div>
       <div className="flex justify-end gap-2 mb-4">
-        <button onClick={() => bulkAdd.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent">
+        <button disabled={!canManage} onClick={() => bulkAdd.mutate()} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50">
           Add Common Set
         </button>
-        <button onClick={openNew} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+        <button disabled={!canManage} onClick={openNew} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           <Plus className="h-4 w-4" /> Add Extra
         </button>
       </div>
@@ -332,8 +347,12 @@ function ExtrasTab({ firmId, queryClient }: { firmId: string; queryClient: Retur
                   <span className={`inline-flex h-2 w-2 rounded-full ${e.is_active ? 'bg-green-500' : 'bg-muted'}`} />
                 </td>
                 <td className="px-5 py-3 text-right">
-                  <button onClick={() => openEdit(e)} className="text-muted-foreground hover:text-foreground mr-2"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => del.mutate(e.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                  {canManage && (
+                    <>
+                      <button onClick={() => openEdit(e)} className="text-muted-foreground hover:text-foreground mr-2"><Pencil className="h-4 w-4" /></button>
+                      <button onClick={() => del.mutate(e.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -341,7 +360,7 @@ function ExtrasTab({ firmId, queryClient }: { firmId: string; queryClient: Retur
         </table>
       </div>
 
-      {showDialog && (
+      {showDialog && canManage && (
         <Dialog title={editing ? 'Edit Extra' : 'Add Extra'} onClose={() => setShowDialog(false)}>
           <div className="space-y-4">
             <Field label="Name">
@@ -405,7 +424,7 @@ function ExtrasTab({ firmId, queryClient }: { firmId: string; queryClient: Retur
   )
 }
 
-function CodesTab({ firmId, queryClient }: { firmId: string; queryClient: ReturnType<typeof useQueryClient> }) {
+function CodesTab({ firmId, queryClient, canManage }: { firmId: string; queryClient: ReturnType<typeof useQueryClient>; canManage: boolean }) {
   const [showDialog, setShowDialog] = useState(false)
   const [editing, setEditing] = useState<DiscountCode | null>(null)
   const [form, setForm] = useState({
@@ -425,6 +444,7 @@ function CodesTab({ firmId, queryClient }: { firmId: string; queryClient: Return
 
   const save = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
       const payload = {
         code: form.code.toUpperCase(),
         description: form.description || null,
@@ -454,6 +474,7 @@ function CodesTab({ firmId, queryClient }: { firmId: string; queryClient: Return
 
   const del = useMutation({
     mutationFn: async (id: string) => {
+      if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
       const { error } = await supabase.from('discount_codes').delete().eq('id', id)
       if (error) throw error
     },
@@ -487,7 +508,7 @@ function CodesTab({ firmId, queryClient }: { firmId: string; queryClient: Return
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <button onClick={openNew} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+        <button disabled={!canManage} onClick={openNew} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           <Plus className="h-4 w-4" /> Add Code
         </button>
       </div>
@@ -519,8 +540,12 @@ function CodesTab({ firmId, queryClient }: { firmId: string; queryClient: Return
                   <span className={`inline-flex h-2 w-2 rounded-full ${c.is_active ? 'bg-green-500' : 'bg-muted'}`} />
                 </td>
                 <td className="px-5 py-3 text-right">
-                  <button onClick={() => openEdit(c)} className="text-muted-foreground hover:text-foreground mr-2"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => del.mutate(c.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                  {canManage && (
+                    <>
+                      <button onClick={() => openEdit(c)} className="text-muted-foreground hover:text-foreground mr-2"><Pencil className="h-4 w-4" /></button>
+                      <button onClick={() => del.mutate(c.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -528,7 +553,7 @@ function CodesTab({ firmId, queryClient }: { firmId: string; queryClient: Return
         </table>
       </div>
 
-      {showDialog && (
+      {showDialog && canManage && (
         <Dialog title={editing ? 'Edit Code' : 'Add Code'} onClose={() => setShowDialog(false)}>
           <div className="space-y-4">
             <Field label="Code">
