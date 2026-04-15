@@ -3,6 +3,7 @@
 This project now uses:
 - **Password login** for normal sign-in.
 - **OTP verification** for password reset (including new-user signup handoff).
+- Signup handoff URL pattern: `/reset-password?email=user@example.com&flow=signup` (email prefilled).
 
 To make that flow work reliably and avoid magic-link confusion, please complete the actions below in your Supabase project.
 

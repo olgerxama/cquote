@@ -34,6 +34,7 @@ export default function App() {
       <Route path="/admin/signup" element={<SignupPage />} />
       <Route path="/admin/accept-invite" element={<AcceptInvitePage />} />
       <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/admin/onboarding" element={<OnboardingPage />} />
 
       {/* Protected admin routes */}

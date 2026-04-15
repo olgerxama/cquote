@@ -14,7 +14,7 @@ export default function ResetPasswordPage() {
   const [otpCode, setOtpCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [step, setStep] = useState<'request' | 'verify' | 'setPassword'>(isSignupFlow ? 'verify' : 'request')
+  const [step, setStep] = useState<'request' | 'verify' | 'setPassword'>('request')
   const [loading, setLoading] = useState(false)
 
   async function handleSendOtp(e: React.FormEvent) {
@@ -22,7 +22,7 @@ export default function ResetPasswordPage() {
     setLoading(true)
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: false },
+      options: { shouldCreateUser: isSignupFlow },
     })
     setLoading(false)
     if (error) {
@@ -30,7 +30,7 @@ export default function ResetPasswordPage() {
       return
     }
     setStep('verify')
-    toast.success('Password reset OTP sent')
+    toast.success(isSignupFlow ? 'Signup OTP sent' : 'Password reset OTP sent')
   }
 
   async function handleVerifyOtp(e: React.FormEvent) {
@@ -87,7 +87,9 @@ export default function ResetPasswordPage() {
             <Scale className="h-8 w-8 text-primary" />
             <span className="text-2xl font-bold text-foreground">ConveyQuote</span>
           </Link>
-          <p className="mt-2 text-muted-foreground">Reset password using email OTP</p>
+          <p className="mt-2 text-muted-foreground">
+            {isSignupFlow ? 'Verify your email with OTP, then set your password.' : 'Reset password using email OTP'}
+          </p>
         </div>
 
         <form
@@ -104,7 +106,7 @@ export default function ResetPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="you@lawfirm.co.uk"
-              disabled={step !== 'request' || isSignupFlow}
+              disabled={step !== 'request'}
             />
           </div>
 
