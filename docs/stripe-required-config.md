@@ -57,7 +57,7 @@ Set these as Edge Function secrets in Supabase:
 
 ## 6) What has been wired in app
 
-- Billing tab in Settings with:
+- Billing section in Settings → Firm tab with:
   - Upgrade/checkout button
   - Manage billing portal button
   - Subscription status and period end display
@@ -66,3 +66,18 @@ Set these as Edge Function secrets in Supabase:
 - Stripe customer portal function
 - Stripe webhook function that updates firm subscription fields
 
+## 7) SQL migration troubleshooting
+
+If you see an error like:
+
+- `syntax error at or near "{"`
+- line starts with `import { createClient } ...`
+
+that means a **TypeScript edge-function file** was pasted into SQL editor by mistake.
+
+For DB enforcement, run only SQL migrations from:
+
+- `supabase/migrations/20260415123000_enforce_free_plan_feature_locks.sql`
+- `supabase/migrations/20260415130000_recreate_firm_plan_feature_lock_trigger.sql` (safe re-create)
+
+The trigger automatically runs on every `firms` insert/update, so if plan/status moves back to free/non-active, premium flags are forced off.
