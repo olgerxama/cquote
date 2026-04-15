@@ -32,6 +32,14 @@ export default function AcceptInvitePage() {
     }
 
     const invitedFirmId = searchParams.get('firmId')
+    const { error: linkError } = await supabase.functions.invoke('accept-firm-invite', {
+      body: { firmId: invitedFirmId || undefined },
+    })
+    if (linkError) {
+      toast.error(`Invite accepted but firm assignment failed: ${linkError.message}`)
+      return
+    }
+
     if (invitedFirmId) {
       localStorage.setItem('cq_preferred_firm_id', invitedFirmId)
     }

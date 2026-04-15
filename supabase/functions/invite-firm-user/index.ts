@@ -86,6 +86,8 @@ Deno.serve(async (req) => {
         firm_name: firm?.name || 'your firm',
         inviter_name: inviterName,
         member_role: roleLabel,
+        invited_role: role,
+        firm_id: firmId,
       },
     })
 
