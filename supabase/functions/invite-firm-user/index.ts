@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     const appUrl = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || 'http://localhost:5173'
 
     const normalizedEmail = String(email).trim().toLowerCase()
-    const redirectTo = `${appUrl}/admin/accept-invite`
+    const redirectTo = `${appUrl}/admin/accept-invite?firmId=${encodeURIComponent(firmId)}&email=${encodeURIComponent(normalizedEmail)}`
     const inviterName =
       authUser.user.user_metadata?.full_name ||
       authUser.user.user_metadata?.name ||

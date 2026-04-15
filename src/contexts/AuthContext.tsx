@@ -71,14 +71,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function resolveUserContext(userId: string) {
     lastUserIdRef.current = userId
     try {
-      // Look up firm membership. Queries are independent so failures don't cascade.
+      // Look up firm membership. Users may belong to multiple firms.
       const firmResult = await supabase
         .from('firm_users')
-        .select('firm_id')
+        .select('firm_id,created_at')
         .eq('user_id', userId)
-        .maybeSingle()
+        .order('created_at', { ascending: false })
 
-      let resolvedFirmId: string | null = firmResult.data?.firm_id ?? null
+      const memberships = (firmResult.data ?? []) as Array<{ firm_id: string; created_at: string }>
+      const preferredFirmId = localStorage.getItem('cq_preferred_firm_id')
+      const preferredMembership = memberships.find((m) => m.firm_id === preferredFirmId)
+
+      let resolvedFirmId: string | null = preferredMembership?.firm_id || memberships[0]?.firm_id || null
 
       // Fallback: if no firm_users row found (e.g. row exists but SELECT
       // errored, or row was genuinely missing), look up via owner_user_id.
@@ -93,6 +97,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setFirmId(resolvedFirmId)
+      if (resolvedFirmId) {
+        localStorage.setItem('cq_preferred_firm_id', resolvedFirmId)
+      } else {
+        localStorage.removeItem('cq_preferred_firm_id')
+      }
 
       // platform_owner check is best-effort: failure must not block login
       try {
