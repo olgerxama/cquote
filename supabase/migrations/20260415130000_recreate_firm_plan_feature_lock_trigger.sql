@@ -7,6 +7,7 @@ drop function if exists public.enforce_firm_plan_feature_locks();
 create function public.enforce_firm_plan_feature_locks()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 declare
   has_professional_access boolean;
@@ -52,4 +53,3 @@ where not (
   plan_type = 'professional'
   and coalesce(stripe_subscription_status, '') in ('active', 'trialing')
 );
-

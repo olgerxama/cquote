@@ -77,7 +77,7 @@ that means a **TypeScript edge-function file** was pasted into SQL editor by mis
 
 For DB enforcement, run only SQL migrations from:
 
-- `supabase/migrations/20260415123000_enforce_free_plan_feature_locks.sql`
 - `supabase/migrations/20260415130000_recreate_firm_plan_feature_lock_trigger.sql` (safe re-create)
+- `supabase/migrations/20260415133000_set_search_path_on_feature_lock_function.sql` (security advisor fix)
 
 The trigger automatically runs on every `firms` insert/update, so if plan/status moves back to free/non-active, premium flags are forced off.
