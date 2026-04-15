@@ -17,7 +17,7 @@ export function ProtectedRoute() {
   }
 
   if (!firmId) {
-    return <Navigate to="/admin/onboarding" replace />
+    return <Navigate to="/admin/no-access" replace />
   }
 
   return <Outlet />

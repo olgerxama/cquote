@@ -61,7 +61,7 @@ const INSTRUCTION_FORM_FIELDS: Array<{ key: string; label: string }> = [
 type Tab = 'firm' | 'form' | 'instruction' | 'team' | 'quote' | 'review' | 'email' | 'embed'
 
 export default function SettingsPage() {
-  const { firmId, user } = useAuth()
+  const { firmId, user, firmRole, isPlatformOwner } = useAuth()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('firm')
   const [form, setForm] = useState<Partial<Firm>>({})
@@ -79,9 +79,11 @@ export default function SettingsPage() {
   const { data: members = [] } = useQuery({
     queryKey: ['firm-members', firmId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('firm_users').select('*').eq('firm_id', firmId!)
+      const { data, error } = await supabase.functions.invoke('list-firm-team-members', {
+        body: { firmId: firmId! },
+      })
       if (error) throw error
-      return (data ?? []) as FirmUser[]
+      return ((data?.members as FirmUser[]) ?? [])
     },
     enabled: !!firmId,
   })
@@ -97,6 +99,10 @@ export default function SettingsPage() {
 
   const save = useMutation({
     mutationFn: async (patch: Partial<Firm>) => {
+      const canManage = isPlatformOwner || firmRole === 'admin'
+      if (!canManage) {
+        throw new Error('Read-only accounts cannot change settings.')
+      }
       const { error } = await supabase.from('firms').update(patch).eq('id', firmId!)
       if (error) throw error
     },
@@ -141,6 +147,7 @@ export default function SettingsPage() {
 
   if (isLoading) return <div className="text-muted-foreground">Loading…</div>
   if (!firm) return <div className="text-muted-foreground">Firm not found</div>
+  const canManageSettings = isPlatformOwner || user?.id === firm.owner_user_id || firmRole === 'admin'
 
   const tabs: Array<{ key: Tab; label: string }> = [
     { key: 'firm', label: 'Firm' },
@@ -160,6 +167,11 @@ export default function SettingsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
         <p className="text-muted-foreground mt-1">Configure your firm, quote form, and embedding options.</p>
+        {!canManageSettings && (
+          <p className="mt-2 text-sm text-amber-700">
+            You have read-only access. Changes are disabled for this account.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-1 border-b border-border mb-6">
@@ -382,7 +394,7 @@ export default function SettingsPage() {
           </button>
           <button
             onClick={() => save.mutate(form)}
-            disabled={save.isPending || !isDirty}
+            disabled={!canManageSettings || save.isPending || !isDirty}
             className="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {save.isPending ? 'Saving…' : 'Save changes'}
@@ -610,18 +622,20 @@ function TeamTab({
   const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<'admin' | 'read_only'>('read_only')
+  const [pendingRemove, setPendingRemove] = useState<{ id: string; label: string } | null>(null)
   const currentMember = members.find((m) => m.user_id === currentUserId)
   const canManage = currentUserId === firm.owner_user_id || currentMember?.role === 'admin'
 
   const inviteMember = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.functions.invoke('invite-firm-user', {
+      const { data, error } = await supabase.functions.invoke('invite-firm-user', {
         body: { firmId: firm.id, email: email.trim(), role },
       })
       if (error) throw error
+      return data as { message?: string }
     },
-    onSuccess: () => {
-      toast.success('Invitation sent')
+    onSuccess: (data) => {
+      toast.success(data?.message || 'Invitation sent')
       setEmail('')
       queryClient.invalidateQueries({ queryKey: ['firm-members', firm.id] })
     },
@@ -661,6 +675,12 @@ function TeamTab({
         <p className="text-sm text-muted-foreground mb-3">
           Admin members can manage data and settings (except subscription payments). Read-only members can view everything but cannot make changes.
         </p>
+        <p className="text-xs text-muted-foreground mb-3">
+          Invite emails are sent by Supabase Auth. You can fully customize that template in your Supabase dashboard and use metadata keys like
+          <code className="mx-1 rounded bg-muted px-1 py-0.5">firm_name</code>,
+          <code className="mx-1 rounded bg-muted px-1 py-0.5">inviter_name</code>, and
+          <code className="mx-1 rounded bg-muted px-1 py-0.5">member_role</code>.
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3">
           <Input value={email} onChange={setEmail} placeholder="colleague@firm.com" />
           <Select
@@ -692,7 +712,7 @@ function TeamTab({
             return (
               <div key={m.id} className="flex items-center justify-between border border-border rounded-lg px-3 py-2">
                 <div>
-                  <div className="text-sm font-medium">{m.user_id}{isSelf ? ' (You)' : ''}</div>
+                  <div className="text-sm font-medium">{m.email || m.user_id}{isSelf ? ' (You)' : ''}</div>
                   <div className="text-xs text-muted-foreground">{isOwner ? 'Owner' : 'Team member'}</div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -707,7 +727,7 @@ function TeamTab({
                   </select>
                   {!isOwner && (
                     <button
-                      onClick={() => removeMember.mutate(m.id)}
+                      onClick={() => setPendingRemove({ id: m.id, label: m.email || m.user_id })}
                       disabled={!canManage || removeMember.isPending || isSelf}
                       className="px-2 py-1 text-xs rounded border border-input hover:bg-muted disabled:opacity-50"
                     >
@@ -723,6 +743,35 @@ function TeamTab({
           )}
         </div>
       </Section>
+
+      {pendingRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setPendingRemove(null)} />
+          <div className="relative w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">Remove team member?</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Remove <span className="font-medium text-foreground">{pendingRemove.label}</span> from this firm? They will lose dashboard access immediately.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setPendingRemove(null)}
+                className="rounded-md border border-input px-3 py-2 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  removeMember.mutate(pendingRemove.id)
+                  setPendingRemove(null)
+                }}
+                className="rounded-md bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+              >
+                Remove member
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

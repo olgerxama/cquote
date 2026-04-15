@@ -65,6 +65,10 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
           <p className="text-center text-sm text-muted-foreground">
+            Forgot your password?{' '}
+            <Link to="/admin/reset-password" className="text-primary hover:underline font-medium">Reset with OTP</Link>
+          </p>
+          <p className="text-center text-sm text-muted-foreground">
             Don't have an account?{' '}
             <Link to="/admin/signup" className="text-primary hover:underline font-medium">Sign up</Link>
           </p>

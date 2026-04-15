@@ -41,7 +41,8 @@ const STATUS_TABS: { label: string; value: LeadStatus | 'all' }[] = [
 
 // ---------- Main Component ----------
 export default function LeadsPage() {
-  const { firmId } = useAuth()
+  const { firmId, firmRole, isPlatformOwner } = useAuth()
+  const canManage = firmRole === 'admin' || isPlatformOwner
 
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all')
   const [searchTerm, setSearchTerm] = useState('')
@@ -125,10 +126,22 @@ export default function LeadsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Leads</h1>
           <p className="text-muted-foreground mt-1">Manage enquiries and generate quotes.</p>
+          {!canManage && (
+            <p className="mt-2 text-sm text-amber-700">
+              You have read-only access. Editing, quote sending, and manual lead creation are disabled.
+            </p>
+          )}
         </div>
         <button
-          onClick={() => setShowCreateDialog(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          onClick={() => {
+            if (!canManage) {
+              toast.error('Read-only accounts cannot create leads.')
+              return
+            }
+            setShowCreateDialog(true)
+          }}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          disabled={!canManage}
         >
           <Plus className="h-4 w-4" />
           Create Manual Lead
@@ -295,6 +308,7 @@ export default function LeadsPage() {
         <LeadDetailPanel
           lead={selectedLead}
           firmId={firmId!}
+          canManage={canManage}
           onClose={() => setSelectedLeadId(null)}
         />
       )}
@@ -303,6 +317,7 @@ export default function LeadsPage() {
       {showCreateDialog && (
         <CreateLeadDialog
           firmId={firmId!}
+          canManage={canManage}
           onClose={() => setShowCreateDialog(false)}
         />
       )}
@@ -314,10 +329,12 @@ export default function LeadsPage() {
 function LeadDetailPanel({
   lead,
   firmId,
+  canManage,
   onClose,
 }: {
   lead: Lead
   firmId: string
+  canManage: boolean
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -363,6 +380,10 @@ function LeadDetailPanel({
   })
 
   function handleStatusChange(newStatus: LeadStatus) {
+    if (!canManage) {
+      toast.error('Read-only accounts cannot change lead status.')
+      return
+    }
     setStatus(newStatus)
     updateStatusMut.mutate(newStatus)
   }
@@ -405,6 +426,7 @@ function LeadDetailPanel({
             <select
               value={status}
               onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
+              disabled={!canManage}
               className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               <option value="new">New</option>
@@ -434,6 +456,7 @@ function LeadDetailPanel({
             firmId={firmId}
             existingQuote={existingQuote ?? null}
             existingItems={existingItems}
+            canManage={canManage}
           />
         </div>
       </div>
@@ -456,11 +479,13 @@ function QuoteSection({
   firmId,
   existingQuote,
   existingItems,
+  canManage,
 }: {
   lead: Lead
   firmId: string
   existingQuote: Quote | null
   existingItems: QuoteItem[]
+  canManage: boolean
 }) {
   const queryClient = useQueryClient()
   const [items, setItems] = useState<QuoteLineItem[]>([])
@@ -603,6 +628,9 @@ function QuoteSection({
   // Save quote — returns the quote id so callers can chain follow-up actions.
   const saveMut = useMutation({
     mutationFn: async (): Promise<string> => {
+      if (!canManage) {
+        throw new Error('Read-only accounts cannot save quotes.')
+      }
       const totals = recalculateTotals(items)
 
       const quotePayload = {
@@ -661,6 +689,10 @@ function QuoteSection({
   })
 
   async function handleSendEmail() {
+    if (!canManage) {
+      toast.error('Read-only accounts cannot send quotes to customers.')
+      return
+    }
     if (items.length === 0) {
       toast.error('Add at least one line item before sending')
       return
@@ -749,6 +781,7 @@ function QuoteSection({
           </p>
           <button
             onClick={handleGenerate}
+            disabled={!canManage}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             <Zap className="h-4 w-4" />
@@ -817,6 +850,7 @@ function QuoteSection({
                     type="text"
                     value={item.description}
                     onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                    disabled={!canManage}
                     className="text-sm bg-transparent border-0 border-b border-transparent group-hover:border-dashed group-hover:border-border focus:outline-none focus:border-primary focus:border-solid px-0 py-0.5"
                   />
                   <label className="flex items-center justify-center cursor-pointer">
@@ -824,6 +858,7 @@ function QuoteSection({
                       type="checkbox"
                       checked={item.is_vatable}
                       onChange={(e) => updateItem(idx, 'is_vatable', e.target.checked)}
+                      disabled={!canManage}
                       className="h-4 w-4 rounded border-border"
                     />
                   </label>
@@ -834,11 +869,13 @@ function QuoteSection({
                       step="0.01"
                       value={item.amount}
                       onChange={(e) => updateItem(idx, 'amount', parseFloat(e.target.value) || 0)}
+                      disabled={!canManage}
                       className="w-20 text-sm text-right bg-transparent border-0 border-b border-transparent group-hover:border-dashed group-hover:border-border focus:outline-none focus:border-primary focus:border-solid px-0 py-0.5"
                     />
                   </div>
                   <button
                     onClick={() => removeItem(idx)}
+                    disabled={!canManage}
                     className="p-1 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                     title="Remove line"
                   >
@@ -850,6 +887,7 @@ function QuoteSection({
 
             <button
               onClick={addItem}
+              disabled={!canManage}
               className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
             >
               <Plus className="h-3.5 w-3.5" /> Add line item
@@ -887,7 +925,7 @@ function QuoteSection({
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => saveMut.mutate()}
-                disabled={saveMut.isPending || !dirty}
+                disabled={!canManage || saveMut.isPending || !dirty}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 <Save className="h-4 w-4" />
@@ -895,6 +933,7 @@ function QuoteSection({
               </button>
               <button
                 onClick={handleGenerate}
+                disabled={!canManage}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3.5 py-2 text-sm font-medium hover:bg-muted transition-colors"
                 title="Recalculate from firm pricing"
               >
@@ -904,7 +943,7 @@ function QuoteSection({
             </div>
             <button
               onClick={handleSendEmail}
-              disabled={sending || saveMut.isPending}
+              disabled={!canManage || sending || saveMut.isPending}
               className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-50 transition-colors"
             >
               <Send className="h-4 w-4" />
@@ -920,9 +959,11 @@ function QuoteSection({
 // ---------- Create Lead Dialog ----------
 function CreateLeadDialog({
   firmId,
+  canManage,
   onClose,
 }: {
   firmId: string
+  canManage: boolean
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -937,6 +978,9 @@ function CreateLeadDialog({
 
   const createMut = useMutation({
     mutationFn: async () => {
+      if (!canManage) {
+        throw new Error('Read-only accounts cannot create leads.')
+      }
       const { error } = await supabase.from('leads').insert({
         firm_id: firmId,
         full_name: form.full_name,
@@ -962,6 +1006,10 @@ function CreateLeadDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!canManage) {
+      toast.error('Read-only accounts cannot create leads.')
+      return
+    }
     if (!form.full_name || !form.email) {
       toast.error('Name and email are required')
       return
@@ -1057,7 +1105,7 @@ function CreateLeadDialog({
             </button>
             <button
               type="submit"
-              disabled={createMut.isPending}
+              disabled={!canManage || createMut.isPending}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
             >
               {createMut.isPending ? 'Creating...' : 'Create Lead'}

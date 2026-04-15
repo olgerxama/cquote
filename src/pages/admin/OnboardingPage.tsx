@@ -29,6 +29,7 @@ export default function OnboardingPage() {
           .from('firm_users')
           .select('firm_id')
           .eq('user_id', user.id)
+          .limit(1)
           .maybeSingle()
 
         if (existingLink?.firm_id) {
@@ -81,6 +82,7 @@ export default function OnboardingPage() {
         .from('firm_users')
         .select('firm_id')
         .eq('user_id', user.id)
+        .limit(1)
         .maybeSingle()
 
       if (existingLink?.firm_id) {

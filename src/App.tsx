@@ -8,6 +8,8 @@ import NotFound from '@/pages/NotFound'
 import LoginPage from '@/pages/admin/LoginPage'
 import SignupPage from '@/pages/admin/SignupPage'
 import AcceptInvitePage from '@/pages/admin/AcceptInvitePage'
+import ResetPasswordPage from '@/pages/admin/ResetPasswordPage'
+import NoFirmAccessPage from '@/pages/admin/NoFirmAccessPage'
 import OnboardingPage from '@/pages/admin/OnboardingPage'
 import AdminLayout from '@/pages/admin/AdminLayout'
 import DashboardPage from '@/pages/admin/DashboardPage'
@@ -32,6 +34,9 @@ export default function App() {
       <Route path="/admin/login" element={<LoginPage />} />
       <Route path="/admin/signup" element={<SignupPage />} />
       <Route path="/admin/accept-invite" element={<AcceptInvitePage />} />
+      <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/admin/no-access" element={<NoFirmAccessPage />} />
       <Route path="/admin/onboarding" element={<OnboardingPage />} />
 
       {/* Protected admin routes */}

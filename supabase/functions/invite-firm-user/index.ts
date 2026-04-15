@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     const { data: firm } = await service
       .from('firms')
-      .select('owner_user_id')
+      .select('owner_user_id,name')
       .eq('id', firmId)
       .maybeSingle()
 
@@ -73,8 +73,41 @@ Deno.serve(async (req) => {
     const appUrl = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || 'http://localhost:5173'
 
     const normalizedEmail = String(email).trim().toLowerCase()
+    const { error: inviteLogError } = await service
+      .from('firm_user_invites')
+      .upsert(
+        {
+          firm_id: firmId,
+          email: normalizedEmail,
+          role,
+          invited_by_user_id: authUser.user.id,
+          invited_at: new Date().toISOString(),
+          accepted_at: null,
+          accepted_user_id: null,
+        },
+        { onConflict: 'firm_id,email' },
+      )
+
+    if (inviteLogError) {
+      return json({ error: inviteLogError.message }, 400)
+    }
+
+    const redirectTo = `${appUrl}/admin/accept-invite?firmId=${encodeURIComponent(firmId)}&email=${encodeURIComponent(normalizedEmail)}`
+    const inviterName =
+      authUser.user.user_metadata?.full_name ||
+      authUser.user.user_metadata?.name ||
+      authUser.user.email ||
+      'A team member'
+    const roleLabel = role === 'admin' ? 'Admin' : 'Read-only'
     const inviteResult = await service.auth.admin.inviteUserByEmail(normalizedEmail, {
-      redirectTo: `${appUrl}/admin/accept-invite`,
+      redirectTo,
+      data: {
+        firm_name: firm?.name || 'your firm',
+        inviter_name: inviterName,
+        member_role: roleLabel,
+        invited_role: role,
+        firm_id: firmId,
+      },
     })
 
     let invitedUserId = inviteResult.data.user?.id || null

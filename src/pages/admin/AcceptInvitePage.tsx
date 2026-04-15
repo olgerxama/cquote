@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Scale } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/client'
 import { toast } from 'sonner'
 
 export default function AcceptInvitePage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
@@ -28,6 +29,19 @@ export default function AcceptInvitePage() {
     if (error) {
       toast.error(error.message)
       return
+    }
+
+    const invitedFirmId = searchParams.get('firmId')
+    const { error: linkError } = await supabase.functions.invoke('accept-firm-invite', {
+      body: { firmId: invitedFirmId || undefined },
+    })
+    if (linkError) {
+      toast.error(`Invite accepted but firm assignment failed: ${linkError.message}`)
+      return
+    }
+
+    if (invitedFirmId) {
+      localStorage.setItem('cq_preferred_firm_id', invitedFirmId)
     }
 
     toast.success('Password set. Welcome to your firm dashboard!')
