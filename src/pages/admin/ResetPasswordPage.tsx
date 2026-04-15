@@ -1,16 +1,20 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Scale } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/client'
 import { toast } from 'sonner'
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const [searchParams] = useSearchParams()
+  const flow = searchParams.get('flow')
+  const initialEmail = searchParams.get('email') || ''
+  const isSignupFlow = flow === 'signup'
+  const [email, setEmail] = useState(initialEmail)
   const [otpCode, setOtpCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [step, setStep] = useState<'request' | 'verify' | 'setPassword'>('request')
+  const [step, setStep] = useState<'request' | 'verify' | 'setPassword'>(isSignupFlow ? 'verify' : 'request')
   const [loading, setLoading] = useState(false)
 
   async function handleSendOtp(e: React.FormEvent) {
@@ -65,6 +69,12 @@ export default function ResetPasswordPage() {
       return
     }
 
+    if (isSignupFlow) {
+      toast.success('Password set. Let’s finish your onboarding.')
+      navigate('/admin/onboarding')
+      return
+    }
+
     toast.success('Password updated. You can now sign in.')
     navigate('/admin/login')
   }
@@ -94,7 +104,7 @@ export default function ResetPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="you@lawfirm.co.uk"
-              disabled={step !== 'request'}
+              disabled={step !== 'request' || isSignupFlow}
             />
           </div>
 
@@ -157,8 +167,17 @@ export default function ResetPasswordPage() {
           </button>
 
           <p className="text-center text-sm text-muted-foreground">
-            Back to{' '}
-            <Link to="/admin/login" className="text-primary hover:underline font-medium">Sign in</Link>
+            {isSignupFlow ? (
+              <>
+                Need a different email?{' '}
+                <Link to="/admin/signup" className="text-primary hover:underline font-medium">Start signup again</Link>
+              </>
+            ) : (
+              <>
+                Back to{' '}
+                <Link to="/admin/login" className="text-primary hover:underline font-medium">Sign in</Link>
+              </>
+            )}
           </p>
         </form>
       </div>

@@ -57,7 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // on each token rotation makes the app feel like it reloads.
       const shouldResolve =
         event === 'SIGNED_IN' ||
-        event === 'USER_UPDATED' ||
         lastUserIdRef.current !== session.user.id
 
       if (!shouldResolve) return
