@@ -1,11 +1,14 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { Shield, Building2, BarChart3, ArrowLeft, LogOut } from 'lucide-react'
+import { Shield, Building2, BarChart3, ArrowLeft, LogOut, Users, ClipboardList, LineChart } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { label: 'Firms', href: '/owner', icon: Building2 },
+  { label: 'Leads', href: '/owner/leads', icon: Users },
+  { label: 'Instructions', href: '/owner/instructions', icon: ClipboardList },
   { label: 'Analytics', href: '/owner/analytics', icon: BarChart3 },
+  { label: 'Reports', href: '/owner/reports', icon: LineChart },
 ]
 
 export default function OwnerLayout() {

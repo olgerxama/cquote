@@ -983,6 +983,8 @@ function BillingSection({
   const periodEnd = firm.stripe_subscription_current_period_end
     ? new Date(firm.stripe_subscription_current_period_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : null
+  const hasSubscriptionRecord = !!firm.stripe_subscription_id || status !== 'none'
+  const showCancellationNotice = hasSubscriptionRecord && !!periodEnd && !!firm.stripe_subscription_cancel_at_period_end
 
   async function openCheckout() {
     setLoadingCheckout(true)
@@ -1025,13 +1027,13 @@ function BillingSection({
           <div className="text-sm text-muted-foreground">Current plan</div>
           <div className="text-lg font-semibold text-foreground">{hasProAccess ? 'Professional (£49/month)' : 'Free'}</div>
           <div className="text-xs text-muted-foreground">Stripe status: <span className="font-medium text-foreground">{status}</span></div>
-          {periodEnd && (
+          {hasSubscriptionRecord && periodEnd && (
             <div className="text-xs text-muted-foreground">
-              {firm.stripe_subscription_cancel_at_period_end ? 'Access ends on' : 'Renews on'}{' '}
+              {showCancellationNotice ? 'Access ends on' : 'Renews on'}{' '}
               <span className="font-medium text-foreground">{periodEnd}</span>
             </div>
           )}
-          {firm.stripe_subscription_cancel_at_period_end && (
+          {showCancellationNotice && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
               Subscription is cancelled and set to end at the current billing period.
             </div>
