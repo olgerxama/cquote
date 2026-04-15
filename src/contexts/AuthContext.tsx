@@ -40,18 +40,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
-      if (session?.user) {
-        setLoading(true)
-        resolveUserContext(session.user.id)
-      } else {
+
+      if (!session?.user) {
         lastUserIdRef.current = null
         setFirmId(null)
         setIsPlatformOwner(false)
         setLoading(false)
+        return
       }
+
+      // Avoid context "refresh flashes" when the browser tab regains focus.
+      // Supabase emits TOKEN_REFRESHED frequently; re-resolving firm context
+      // on each token rotation makes the app feel like it reloads.
+      const shouldResolve =
+        event === 'SIGNED_IN' ||
+        event === 'USER_UPDATED' ||
+        lastUserIdRef.current !== session.user.id
+
+      if (!shouldResolve) return
+
+      setLoading(true)
+      resolveUserContext(session.user.id)
     })
 
     return () => subscription.unsubscribe()
