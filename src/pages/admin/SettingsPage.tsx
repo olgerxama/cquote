@@ -307,7 +307,7 @@ export default function SettingsPage() {
             <Toggle
               label="Show instant quote"
               description="Display the calculated total on the public form immediately."
-              checked={!!form.show_instant_quote}
+              checked={isProAccess ? !!form.show_instant_quote : false}
               onChange={(v) => update('show_instant_quote', withPremiumGuard(v, !!form.show_instant_quote))}
               premiumOnly
               locked={!isProAccess}
@@ -315,7 +315,7 @@ export default function SettingsPage() {
             <Toggle
               label="Show estimate document"
               description="Show a detailed PDF-style estimate document on completion."
-              checked={!!form.show_estimate_document}
+              checked={isProAccess ? !!form.show_estimate_document : false}
               onChange={(v) => update('show_estimate_document', withPremiumGuard(v, !!form.show_estimate_document))}
               premiumOnly
               locked={!isProAccess}
@@ -329,7 +329,7 @@ export default function SettingsPage() {
             <Toggle
               label="Auto-send quote emails"
               description="Automatically send quote emails to customers once a lead is captured."
-              checked={!!form.auto_send_quote_emails}
+              checked={isProAccess ? !!form.auto_send_quote_emails : false}
               onChange={(v) => update('auto_send_quote_emails', withPremiumGuard(v, !!form.auto_send_quote_emails))}
               premiumOnly
               locked={!isProAccess}
@@ -495,7 +495,7 @@ function FormTab({
             key={t.key as string}
             label={t.label}
             description={t.description}
-            checked={!!config[t.key]}
+            checked={locked ? false : !!config[t.key]}
             onChange={(v) => onConfigChange(t.key, (locked && v ? false : v) as PublicFormConfig[typeof t.key])}
             premiumOnly={isPremiumToggle}
             locked={locked}
