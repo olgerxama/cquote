@@ -8,6 +8,7 @@ interface AuthContextType {
   loading: boolean
   firmId: string | null
   firmRole: 'admin' | 'read_only' | null
+  noFirmMessage: string | null
   isPlatformOwner: boolean
   signOut: () => Promise<void>
 }
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   firmId: null,
   firmRole: null,
+  noFirmMessage: null,
   isPlatformOwner: false,
   signOut: async () => {},
 })
@@ -28,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [firmId, setFirmId] = useState<string | null>(null)
   const [firmRole, setFirmRole] = useState<'admin' | 'read_only' | null>(null)
+  const [noFirmMessage, setNoFirmMessage] = useState<string | null>(null)
   const [isPlatformOwner, setIsPlatformOwner] = useState(false)
   const lastUserIdRef = useRef<string | null>(null)
 
@@ -37,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null)
       if (session?.user) {
         setLoading(true)
-        resolveUserContext(session.user.id)
+        resolveUserContext(session.user.id, session.user.user_metadata || {})
       } else {
         setLoading(false)
       }
@@ -51,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastUserIdRef.current = null
         setFirmId(null)
         setFirmRole(null)
+        setNoFirmMessage(null)
         setIsPlatformOwner(false)
         setLoading(false)
         return
@@ -66,13 +70,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!shouldResolve) return
 
       setLoading(true)
-      resolveUserContext(session.user.id)
+      resolveUserContext(session.user.id, session.user.user_metadata || {})
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  async function resolveUserContext(userId: string) {
+  async function resolveUserContext(userId: string, userMetadata: Record<string, unknown>) {
     lastUserIdRef.current = userId
     try {
       const preferredFirmId = localStorage.getItem('cq_preferred_firm_id')
@@ -141,8 +145,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setFirmId(resolvedFirmId)
       if (resolvedFirmId) {
         localStorage.setItem('cq_preferred_firm_id', resolvedFirmId)
+        setNoFirmMessage(null)
       } else {
         localStorage.removeItem('cq_preferred_firm_id')
+        const invitedFirmId = typeof userMetadata.firm_id === 'string' ? userMetadata.firm_id : null
+        if (invitedFirmId) {
+          setNoFirmMessage('Your account is no longer attached to a firm. Please contact your firm admin to be re-invited.')
+        } else {
+          setNoFirmMessage(null)
+        }
       }
 
       let resolvedFirmRole: 'admin' | 'read_only' | null = null
@@ -175,6 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       setFirmId(null)
       setFirmRole(null)
+      setNoFirmMessage(null)
       setIsPlatformOwner(false)
     } finally {
       setLoading(false)
@@ -187,11 +199,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null)
     setFirmId(null)
     setFirmRole(null)
+    setNoFirmMessage(null)
     setIsPlatformOwner(false)
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, firmId, firmRole, isPlatformOwner, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, firmId, firmRole, noFirmMessage, isPlatformOwner, signOut }}>
       {children}
     </AuthContext.Provider>
   )

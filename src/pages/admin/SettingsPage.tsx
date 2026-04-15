@@ -726,7 +726,10 @@ function TeamTab({
                   </select>
                   {!isOwner && (
                     <button
-                      onClick={() => removeMember.mutate(m.id)}
+                      onClick={() => {
+                        const ok = window.confirm('Remove this team member from your firm? They will lose dashboard access immediately.')
+                        if (ok) removeMember.mutate(m.id)
+                      }}
                       disabled={!canManage || removeMember.isPending || isSelf}
                       className="px-2 py-1 text-xs rounded border border-input hover:bg-muted disabled:opacity-50"
                     >
