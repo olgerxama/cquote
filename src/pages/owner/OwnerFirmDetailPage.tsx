@@ -1,14 +1,18 @@
 import { useParams } from 'react-router-dom'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
-import { Building2, Users, FileText, DollarSign } from 'lucide-react'
+import { Building2, Users, FileText, DollarSign, Trash2 } from 'lucide-react'
 import type { Firm, Lead } from '@/types'
+
+const LEADS_PAGE_SIZE = 20
 
 export default function OwnerFirmDetailPage() {
   const { firmId } = useParams<{ firmId: string }>()
   const queryClient = useQueryClient()
+  const [leadsPage, setLeadsPage] = useState(1)
 
   const { data: firm, isLoading } = useQuery({
     queryKey: ['owner-firm', firmId],
@@ -19,19 +23,23 @@ export default function OwnerFirmDetailPage() {
     enabled: !!firmId,
   })
 
-  const { data: leads = [] } = useQuery({
-    queryKey: ['owner-firm-leads', firmId],
+  const { data: leadsPageData } = useQuery({
+    queryKey: ['owner-firm-leads', firmId, leadsPage],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, count, error } = await supabase
         .from('leads')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('firm_id', firmId!)
         .order('created_at', { ascending: false })
-        .limit(20)
-      return (data ?? []) as Lead[]
+        .range((leadsPage - 1) * LEADS_PAGE_SIZE, leadsPage * LEADS_PAGE_SIZE - 1)
+      if (error) throw error
+      return { rows: (data ?? []) as Lead[], total: count ?? 0 }
     },
     enabled: !!firmId,
   })
+  const leads = leadsPageData?.rows ?? []
+  const totalLeads = leadsPageData?.total ?? 0
+  const totalLeadPages = Math.max(1, Math.ceil(totalLeads / LEADS_PAGE_SIZE))
 
   const { data: members = [] } = useQuery({
     queryKey: ['owner-firm-members', firmId],
@@ -54,6 +62,30 @@ export default function OwnerFirmDetailPage() {
     onError: () => toast.error('Failed to update firm'),
   })
 
+  const removeMember = useMutation({
+    mutationFn: async (memberId: string) => {
+      const { error } = await supabase.from('firm_users').delete().eq('id', memberId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Member account removed from firm')
+      queryClient.invalidateQueries({ queryKey: ['owner-firm-members', firmId] })
+    },
+    onError: () => toast.error('Failed to remove member'),
+  })
+
+  const deleteFirm = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('firms').delete().eq('id', firmId!)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Firm account deleted')
+      window.location.href = '/owner'
+    },
+    onError: () => toast.error('Failed to delete firm account'),
+  })
+
   if (isLoading || !firm) {
     return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>
   }
@@ -70,7 +102,7 @@ export default function OwnerFirmDetailPage() {
         {[
           { label: 'Plan', value: firm.plan_type, icon: DollarSign },
           { label: 'Members', value: members.length, icon: Users },
-          { label: 'Total Leads', value: leads.length, icon: FileText },
+          { label: 'Total Leads', value: totalLeads, icon: FileText },
           { label: 'Active', value: firm.is_active ? 'Yes' : 'No', icon: Building2 },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-border bg-card p-5">
@@ -133,13 +165,44 @@ export default function OwnerFirmDetailPage() {
             <div className="space-y-2">
               {members.map((m) => (
                 <div key={m.id} className="flex justify-between text-sm border-b border-border pb-2 last:border-0">
-                  <span className="text-foreground font-mono text-xs">{m.user_id}</span>
-                  <span className="text-muted-foreground">{m.role}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-foreground font-mono text-xs">{m.user_id}</span>
+                    <span className="text-muted-foreground">{m.role}</span>
+                  </div>
+                  {m.user_id === firm.owner_user_id ? (
+                    <span className="text-xs text-muted-foreground">Owner</span>
+                  ) : (
+                    <button
+                      onClick={() => removeMember.mutate(m.id)}
+                      className="text-xs text-destructive hover:underline disabled:opacity-50"
+                      disabled={removeMember.isPending}
+                    >
+                      Delete member account
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 mb-8">
+        <h3 className="text-lg font-semibold text-destructive mb-2">Danger zone</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Permanently delete this firm account and all related records.
+        </p>
+        <button
+          onClick={() => {
+            const confirmed = window.confirm(`Delete ${firm.name}? This cannot be undone.`)
+            if (confirmed) deleteFirm.mutate()
+          }}
+          className="inline-flex items-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+          disabled={deleteFirm.isPending}
+        >
+          <Trash2 className="h-4 w-4" />
+          {deleteFirm.isPending ? 'Deleting…' : 'Delete firm account'}
+        </button>
       </div>
 
       {/* Recent Leads */}
@@ -176,6 +239,25 @@ export default function OwnerFirmDetailPage() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/20">
+          <p className="text-xs text-muted-foreground">Page {leadsPage} of {totalLeadPages} ({totalLeads} leads)</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setLeadsPage((p) => Math.max(1, p - 1))}
+              disabled={leadsPage === 1}
+              className="rounded-md border border-input px-3 py-1.5 text-sm disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setLeadsPage((p) => Math.min(totalLeadPages, p + 1))}
+              disabled={leadsPage >= totalLeadPages}
+              className="rounded-md border border-input px-3 py-1.5 text-sm disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

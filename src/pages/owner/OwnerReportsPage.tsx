@@ -37,8 +37,37 @@ export default function OwnerReportsPage() {
     queryKey: ['owner-report-summary'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_owner_report_summary')
-      if (error) throw error
-      return (data?.[0] ?? null) as OwnerSummaryRow | null
+      if (!error && data?.[0]) return (data[0] as OwnerSummaryRow)
+
+      // Fallback path if RPC is unavailable in an environment.
+      const [firmsRes, leadsRes, quotesRes, membersRes] = await Promise.all([
+        supabase.from('firms').select('id, is_active, plan_type', { count: 'exact' }),
+        supabase.from('leads').select('id, created_at, instruction_submitted_at', { count: 'exact' }),
+        supabase.from('quotes').select('id, status, grand_total', { count: 'exact' }),
+        supabase.from('firm_users').select('id', { count: 'exact' }),
+      ])
+
+      const firms = firmsRes.data ?? []
+      const leads = leadsRes.data ?? []
+      const quotes = quotesRes.data ?? []
+      const now = new Date()
+      const cutoff = new Date(now)
+      cutoff.setDate(now.getDate() - 30)
+
+      const instructed = leads.filter((l) => !!l.instruction_submitted_at).length
+      return {
+        total_firms: firmsRes.count ?? 0,
+        active_firms: firms.filter((f) => f.is_active).length,
+        pro_firms: firms.filter((f) => f.plan_type === 'professional').length,
+        total_leads: leadsRes.count ?? 0,
+        leads_30_days: leads.filter((l) => new Date(l.created_at) >= cutoff).length,
+        instructed_leads: instructed,
+        instruction_rate: (leadsRes.count ?? 0) > 0 ? Number(((instructed / (leadsRes.count ?? 1)) * 100).toFixed(2)) : 0,
+        total_quotes: quotesRes.count ?? 0,
+        quote_revenue: quotes.filter((q) => q.status === 'sent' || q.status === 'accepted').reduce((sum, q) => sum + Number(q.grand_total || 0), 0),
+        team_members: membersRes.count ?? 0,
+        avg_members_per_firm: (firmsRes.count ?? 0) > 0 ? Number(((membersRes.count ?? 0) / (firmsRes.count ?? 1)).toFixed(2)) : 0,
+      } as OwnerSummaryRow
     },
   })
 
@@ -49,8 +78,43 @@ export default function OwnerReportsPage() {
         _limit: PAGE_SIZE,
         _offset: (page - 1) * PAGE_SIZE,
       })
-      if (error) throw error
-      return (data ?? []) as TopFirmRow[]
+      if (!error) return (data ?? []) as TopFirmRow[]
+
+      // Fallback aggregation when RPC is unavailable.
+      const [{ data: firmsData }, { data: leadsData }, { data: membersData }] = await Promise.all([
+        supabase.from('firms').select('id, name, plan_type, is_active'),
+        supabase.from('leads').select('firm_id, instruction_submitted_at'),
+        supabase.from('firm_users').select('firm_id'),
+      ])
+      const firms = firmsData ?? []
+      const leads = leadsData ?? []
+      const members = membersData ?? []
+      const leadMap: Record<string, number> = {}
+      const instructionMap: Record<string, number> = {}
+      const memberMap: Record<string, number> = {}
+      leads.forEach((l) => {
+        leadMap[l.firm_id] = (leadMap[l.firm_id] || 0) + 1
+        if (l.instruction_submitted_at) instructionMap[l.firm_id] = (instructionMap[l.firm_id] || 0) + 1
+      })
+      members.forEach((m) => { memberMap[m.firm_id] = (memberMap[m.firm_id] || 0) + 1 })
+
+      return firms
+        .map((f) => {
+          const firmLeads = leadMap[f.id] || 0
+          const firmInstructions = instructionMap[f.id] || 0
+          return {
+            firm_id: f.id,
+            name: f.name,
+            plan_type: f.plan_type,
+            is_active: f.is_active,
+            leads: firmLeads,
+            instructions: firmInstructions,
+            members: memberMap[f.id] || 0,
+            conversion: firmLeads > 0 ? Number(((firmInstructions / firmLeads) * 100).toFixed(2)) : 0,
+          }
+        })
+        .sort((a, b) => b.leads - a.leads)
+        .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) as TopFirmRow[]
     },
   })
 

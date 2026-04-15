@@ -20,8 +20,29 @@ export default function OwnerAnalyticsPage() {
     queryKey: ['owner-analytics-summary'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_owner_report_summary')
-      if (error) throw error
-      return (data?.[0] ?? null) as OwnerSummaryRow | null
+      if (!error && data?.[0]) return data[0] as OwnerSummaryRow
+
+      // Fallback path if RPC is unavailable in an environment.
+      const [firmsRes, leadsRes, quotesRes] = await Promise.all([
+        supabase.from('firms').select('id, is_active, plan_type', { count: 'exact' }),
+        supabase.from('leads').select('id, instruction_submitted_at', { count: 'exact' }),
+        supabase.from('quotes').select('id, status, grand_total', { count: 'exact' }),
+      ])
+
+      const firms = firmsRes.data ?? []
+      const leads = leadsRes.data ?? []
+      const quotes = quotesRes.data ?? []
+      return {
+        total_firms: firmsRes.count ?? 0,
+        active_firms: firms.filter((f) => f.is_active).length,
+        pro_firms: firms.filter((f) => f.plan_type === 'professional').length,
+        total_leads: leadsRes.count ?? 0,
+        instructed_leads: leads.filter((l) => !!l.instruction_submitted_at).length,
+        total_quotes: quotesRes.count ?? 0,
+        quote_revenue: quotes
+          .filter((q) => q.status === 'sent' || q.status === 'accepted')
+          .reduce((sum, q) => sum + Number(q.grand_total || 0), 0),
+      } as OwnerSummaryRow
     },
   })
 
@@ -29,8 +50,22 @@ export default function OwnerAnalyticsPage() {
     queryKey: ['owner-analytics-top-firms'],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('get_owner_top_firms', { _limit: 5, _offset: 0 })
-      if (error) throw error
-      return (data ?? []) as TopFirmRow[]
+      if (!error) return (data ?? []) as TopFirmRow[]
+
+      // Fallback aggregation when RPC is unavailable.
+      const [{ data: firmsData }, { data: leadsData }] = await Promise.all([
+        supabase.from('firms').select('id, name'),
+        supabase.from('leads').select('firm_id'),
+      ])
+      const firms = firmsData ?? []
+      const leads = leadsData ?? []
+
+      const leadMap: Record<string, number> = {}
+      leads.forEach((l) => { leadMap[l.firm_id] = (leadMap[l.firm_id] || 0) + 1 })
+      return firms
+        .map((f) => ({ firm_id: f.id, name: f.name, leads: leadMap[f.id] || 0 }))
+        .sort((a, b) => b.leads - a.leads)
+        .slice(0, 5) as TopFirmRow[]
     },
   })
 
