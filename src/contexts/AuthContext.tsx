@@ -71,18 +71,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function resolveUserContext(userId: string) {
     lastUserIdRef.current = userId
     try {
-      // Look up firm membership. Users may belong to multiple firms.
-      const firmResult = await supabase
-        .from('firm_users')
-        .select('firm_id,created_at')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-
-      const memberships = (firmResult.data ?? []) as Array<{ firm_id: string; created_at: string }>
       const preferredFirmId = localStorage.getItem('cq_preferred_firm_id')
-      const preferredMembership = memberships.find((m) => m.firm_id === preferredFirmId)
+      let resolvedFirmId: string | null = null
 
-      let resolvedFirmId: string | null = preferredMembership?.firm_id || memberships[0]?.firm_id || null
+      // 1) If a preferred firm was recently set (e.g. invite accept), honor it
+      // only if the user is actually linked to it.
+      if (preferredFirmId) {
+        const preferredMembershipResult = await supabase
+          .from('firm_users')
+          .select('firm_id')
+          .eq('user_id', userId)
+          .eq('firm_id', preferredFirmId)
+          .limit(1)
+          .maybeSingle()
+
+        if (preferredMembershipResult.data?.firm_id) {
+          resolvedFirmId = preferredFirmId
+        }
+      }
+
+      // 2) Robust fallback: use security-definer RPC (bypasses RLS edge cases).
+      if (!resolvedFirmId) {
+        const rpcResult = await supabase.rpc('get_user_firm_id', { _user_id: userId })
+        resolvedFirmId = (rpcResult.data as string | null) ?? null
+      }
+
+      // 3) Secondary fallback: plain query for membership rows.
+      if (!resolvedFirmId) {
+        const membershipResult = await supabase
+          .from('firm_users')
+          .select('firm_id')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        resolvedFirmId = membershipResult.data?.firm_id ?? null
+      }
 
       // Fallback: if no firm_users row found (e.g. row exists but SELECT
       // errored, or row was genuinely missing), look up via owner_user_id.
