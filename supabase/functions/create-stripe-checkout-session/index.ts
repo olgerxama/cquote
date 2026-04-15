@@ -61,14 +61,14 @@ Deno.serve(async (req) => {
 
     if (!firm) return json({ error: 'Firm not found.' }, 404)
 
-    const canManageBilling = firm.owner_user_id === authUser.user.id || firmMembership?.role === 'admin'
-    if (!canManageBilling) return json({ error: 'Forbidden' }, 403)
+    const isFirmOwner = firm.owner_user_id === authUser.user.id
+    if (!isFirmOwner) return json({ error: 'Only the firm owner can manage billing.' }, 403)
 
     const { returnUrl } = await req.json().catch(() => ({ returnUrl: null }))
     const fallbackUrl = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || 'http://localhost:5173'
     const safeReturnUrl = typeof returnUrl === 'string' && returnUrl.startsWith('http')
       ? returnUrl
-      : `${fallbackUrl}/admin/settings?tab=billing`
+      : `${fallbackUrl}/admin/settings`
 
     const stripe = new Stripe(stripeSecretKey, { apiVersion: '2023-10-16' })
 
