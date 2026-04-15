@@ -2,7 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 
 export function ProtectedRoute() {
-  const { user, loading, firmId, noFirmMessage } = useAuth()
+  const { user, loading, firmId } = useAuth()
 
   if (loading) {
     return (
@@ -17,10 +17,7 @@ export function ProtectedRoute() {
   }
 
   if (!firmId) {
-    if (noFirmMessage) {
-      return <Navigate to="/admin/no-access" replace />
-    }
-    return <Navigate to="/admin/onboarding" replace />
+    return <Navigate to="/admin/no-access" replace />
   }
 
   return <Outlet />
