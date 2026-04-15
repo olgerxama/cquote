@@ -126,6 +126,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isOwnerForResolvedFirm = !!ownedFirmResult.data?.id
       }
 
+      // If we resolved a firm via membership/RPC, still verify owner status so
+      // owners are always treated as admin-capable even without a firm_users row.
+      if (resolvedFirmId && !isOwnerForResolvedFirm) {
+        const ownerCheck = await supabase
+          .from('firms')
+          .select('id')
+          .eq('id', resolvedFirmId)
+          .eq('owner_user_id', userId)
+          .maybeSingle()
+        isOwnerForResolvedFirm = !!ownerCheck.data?.id
+      }
+
       setFirmId(resolvedFirmId)
       if (resolvedFirmId) {
         localStorage.setItem('cq_preferred_firm_id', resolvedFirmId)
