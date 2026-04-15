@@ -37,18 +37,29 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({})) as { firmId?: string }
     const firmIdFromBody = body.firmId || null
 
-    const metadata = authUser.user.user_metadata || {}
-    const invitedFirmId = String(metadata.firm_id || '').trim() || null
-    const invitedRole = metadata.invited_role === 'admin' ? 'admin' : 'read_only'
-
-    const targetFirmId = firmIdFromBody || invitedFirmId
-    if (!targetFirmId) {
-      return json({ error: 'Missing invited firm context' }, 400)
+    const authEmail = String(authUser.user.email || '').trim().toLowerCase()
+    if (!authEmail) {
+      return json({ error: 'Authenticated user has no email' }, 400)
     }
 
-    if (invitedFirmId && targetFirmId !== invitedFirmId) {
-      return json({ error: 'Firm mismatch for invite acceptance' }, 403)
+    let inviteQuery = service
+      .from('firm_user_invites')
+      .select('id,firm_id,role')
+      .eq('email', authEmail)
+      .is('accepted_at', null)
+      .order('invited_at', { ascending: false })
+      .limit(1)
+
+    if (firmIdFromBody) {
+      inviteQuery = inviteQuery.eq('firm_id', firmIdFromBody)
     }
+
+    const { data: invite, error: inviteError } = await inviteQuery.maybeSingle()
+    if (inviteError) return json({ error: inviteError.message }, 400)
+    if (!invite) return json({ error: 'No pending invite found for this email and firm' }, 404)
+
+    const targetFirmId = invite.firm_id as string
+    const invitedRole = invite.role === 'admin' ? 'admin' : 'read_only'
 
     const { error: upsertError } = await service
       .from('firm_users')
@@ -62,6 +73,14 @@ Deno.serve(async (req) => {
       )
 
     if (upsertError) return json({ error: upsertError.message }, 400)
+
+    await service
+      .from('firm_user_invites')
+      .update({
+        accepted_at: new Date().toISOString(),
+        accepted_user_id: authUser.user.id,
+      })
+      .eq('id', invite.id)
 
     return json({ ok: true, firmId: targetFirmId, role: invitedRole })
   } catch (err) {
