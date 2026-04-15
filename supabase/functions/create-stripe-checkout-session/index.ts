@@ -14,6 +14,17 @@ function json(body: unknown, status = 200) {
   })
 }
 
+function withCheckoutState(url: string, state: 'success' | 'cancelled'): string {
+  try {
+    const parsed = new URL(url)
+    parsed.searchParams.set('checkout', state)
+    return parsed.toString()
+  } catch {
+    const separator = url.includes('?') ? '&' : '?'
+    return `${url}${separator}checkout=${state}`
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -77,8 +88,8 @@ Deno.serve(async (req) => {
       customer: firm.stripe_customer_id || undefined,
       customer_email: firm.stripe_customer_id ? undefined : (authUser.user.email || undefined),
       line_items: [{ price: professionalPriceId, quantity: 1 }],
-      success_url: `${safeReturnUrl}&checkout=success`,
-      cancel_url: `${safeReturnUrl}&checkout=cancelled`,
+      success_url: withCheckoutState(safeReturnUrl, 'success'),
+      cancel_url: withCheckoutState(safeReturnUrl, 'cancelled'),
       metadata: {
         firm_id: firm.id,
         firm_slug: firm.slug,
