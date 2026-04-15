@@ -499,6 +499,21 @@ Deno.serve(async (req) => {
       )
     }
 
+    const { data: actorLink } = await supabase
+      .from('firm_users')
+      .select('role')
+      .eq('firm_id', quote.firm_id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    const canManage = actorLink?.role === 'admin' || firm.owner_user_id === user.id
+    if (!canManage) {
+      return new Response(
+        JSON.stringify({ ok: false, error: { code: 'FORBIDDEN', message: 'Read-only users cannot send quote emails.' } }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
     const fromEmail = getFromEmail()
     const baseUrl = getBaseUrl()
     const instructionRef = quote.reference_code || leadId

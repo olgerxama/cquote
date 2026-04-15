@@ -70,6 +70,7 @@ export interface FirmUser {
   firm_id: string;
   role: 'admin' | 'read_only';
   created_at: string;
+  email?: string | null;
 }
 
 export interface PricingBand {

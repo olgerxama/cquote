@@ -79,9 +79,11 @@ export default function SettingsPage() {
   const { data: members = [] } = useQuery({
     queryKey: ['firm-members', firmId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('firm_users').select('*').eq('firm_id', firmId!)
+      const { data, error } = await supabase.functions.invoke('list-firm-team-members', {
+        body: { firmId: firmId! },
+      })
       if (error) throw error
-      return (data ?? []) as FirmUser[]
+      return ((data?.members as FirmUser[]) ?? [])
     },
     enabled: !!firmId,
   })
@@ -699,7 +701,7 @@ function TeamTab({
             return (
               <div key={m.id} className="flex items-center justify-between border border-border rounded-lg px-3 py-2">
                 <div>
-                  <div className="text-sm font-medium">{m.user_id}{isSelf ? ' (You)' : ''}</div>
+                  <div className="text-sm font-medium">{m.email || m.user_id}{isSelf ? ' (You)' : ''}</div>
                   <div className="text-xs text-muted-foreground">{isOwner ? 'Owner' : 'Team member'}</div>
                 </div>
                 <div className="flex items-center gap-2">
