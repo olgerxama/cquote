@@ -32,6 +32,9 @@ const DEFAULT_CONFIG: PublicFormConfig = {
   show_discount_code: true,
   show_instruct_button: true,
   hidden_fields: [],
+  required_fields: [],
+  instruction_hidden_fields: [],
+  instruction_required_fields: [],
 }
 
 const TIMELINE_OPTS = [

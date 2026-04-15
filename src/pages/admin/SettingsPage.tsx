@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { Plus, Trash2, Search, Copy, ExternalLink } from 'lucide-react'
 import { PUBLIC_FORM_FIELDS } from '@/lib/publicFormFields'
 import { DEFAULT_PUBLIC_FORM_CONFIG } from '@/types'
-import type { Firm, ManualReviewCondition, PublicFormConfig } from '@/types'
+import type { Firm, FirmUser, ManualReviewCondition, PublicFormConfig } from '@/types'
 
 const REVIEW_CONDITION_FIELDS = [
   { value: 'probate_related', label: 'Probate Related' },
@@ -39,10 +39,29 @@ const SECTION_TOGGLES: Array<{ key: keyof PublicFormConfig; label: string; descr
   { key: 'show_instruct_button', label: 'Instruct button', description: 'Show the CTA to instruct after the quote.' },
 ]
 
-type Tab = 'firm' | 'branding' | 'form' | 'quote' | 'review' | 'email' | 'embed'
+const INSTRUCTION_FORM_FIELDS: Array<{ key: string; label: string }> = [
+  { key: 'client_type', label: 'Client Type' },
+  { key: 'full_name', label: 'Full Name' },
+  { key: 'email', label: 'Email' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'full_address', label: 'Full Address' },
+  { key: 'address_line_1', label: 'Address Line 1' },
+  { key: 'address_line_2', label: 'Address Line 2' },
+  { key: 'town_city', label: 'Town / City' },
+  { key: 'postcode', label: 'Postcode' },
+  { key: 'date_of_birth', label: 'Date of Birth' },
+  { key: 'national_insurance', label: 'National Insurance Number' },
+  { key: 'id_type', label: 'ID Type' },
+  { key: 'id_number', label: 'ID Number' },
+  { key: 'id_check_consent', label: 'ID Check Consent' },
+  { key: 'source_of_funds', label: 'Source of Funds' },
+  { key: 'additional_notes', label: 'Additional Notes' },
+]
+
+type Tab = 'firm' | 'form' | 'instruction' | 'team' | 'quote' | 'review' | 'email' | 'embed'
 
 export default function SettingsPage() {
-  const { firmId } = useAuth()
+  const { firmId, user } = useAuth()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('firm')
   const [form, setForm] = useState<Partial<Firm>>({})
@@ -53,6 +72,16 @@ export default function SettingsPage() {
       const { data, error } = await supabase.from('firms').select('*').eq('id', firmId!).single()
       if (error) throw error
       return data as Firm
+    },
+    enabled: !!firmId,
+  })
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['firm-members', firmId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('firm_users').select('*').eq('firm_id', firmId!)
+      if (error) throw error
+      return (data ?? []) as FirmUser[]
     },
     enabled: !!firmId,
   })
@@ -83,8 +112,13 @@ export default function SettingsPage() {
   }
 
   function updateFormConfig<K extends keyof PublicFormConfig>(key: K, value: PublicFormConfig[K]) {
-    const current = (form.public_form_config || DEFAULT_PUBLIC_FORM_CONFIG) as PublicFormConfig
-    update('public_form_config', { ...current, [key]: value })
+    setForm((prev) => {
+      const current = (prev.public_form_config || DEFAULT_PUBLIC_FORM_CONFIG) as PublicFormConfig
+      return {
+        ...prev,
+        public_form_config: { ...current, [key]: value },
+      }
+    })
   }
 
   function addReviewCondition() {
@@ -110,8 +144,9 @@ export default function SettingsPage() {
 
   const tabs: Array<{ key: Tab; label: string }> = [
     { key: 'firm', label: 'Firm' },
-    { key: 'branding', label: 'Branding' },
     { key: 'form', label: 'Public form' },
+    { key: 'instruction', label: 'Instruction form' },
+    { key: 'team', label: 'Team' },
     { key: 'quote', label: 'Quote behaviour' },
     { key: 'review', label: 'Manual review' },
     { key: 'email', label: 'Email' },
@@ -127,7 +162,7 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-1">Configure your firm, quote form, and embedding options.</p>
       </div>
 
-      <div className="flex gap-1 border-b border-border mb-6 overflow-x-auto">
+      <div className="flex flex-wrap gap-1 border-b border-border mb-6">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -145,74 +180,74 @@ export default function SettingsPage() {
 
       <div className="space-y-5">
         {tab === 'firm' && (
-          <Section title="Firm details">
-            <Field label="Firm name">
-              <Input value={form.name || ''} onChange={(v) => update('name', v)} />
-            </Field>
-            <Field label="Slug" hint="Used in your public quote URL: /quote/your-slug">
-              <Input value={form.slug || ''} onChange={(v) => update('slug', v)} />
-            </Field>
-            <Field label="Plan">
-              <Select
-                value={form.plan_type || 'free'}
-                onChange={(v) => update('plan_type', v as Firm['plan_type'])}
-                options={[
-                  { value: 'free', label: 'Free' },
-                  { value: 'professional', label: 'Professional' },
-                ]}
-              />
-            </Field>
-            <Field label="Admin notes" hint="Internal notes (not shown to clients)">
-              <Textarea
-                value={form.admin_notes || ''}
-                onChange={(v) => update('admin_notes', v)}
-                rows={3}
-              />
-            </Field>
-          </Section>
-        )}
+          <>
+            <Section title="Firm details">
+              <Field label="Firm name">
+                <Input value={form.name || ''} onChange={(v) => update('name', v)} />
+              </Field>
+              <Field label="Slug" hint="Used in your public quote URL: /quote/your-slug">
+                <Input value={form.slug || ''} onChange={(v) => update('slug', v)} />
+              </Field>
+              <Field label="Plan">
+                <Select
+                  value={form.plan_type || 'free'}
+                  onChange={(v) => update('plan_type', v as Firm['plan_type'])}
+                  options={[
+                    { value: 'free', label: 'Free' },
+                    { value: 'professional', label: 'Professional' },
+                  ]}
+                />
+              </Field>
+              <Field label="Admin notes" hint="Internal notes (not shown to clients)">
+                <Textarea
+                  value={form.admin_notes || ''}
+                  onChange={(v) => update('admin_notes', v)}
+                  rows={3}
+                />
+              </Field>
+            </Section>
 
-        {tab === 'branding' && (
-          <Section title="Branding">
-            <Field label="Logo URL">
-              <Input value={form.logo_url || ''} onChange={(v) => update('logo_url', v)} />
-            </Field>
-            <Field label="Primary colour">
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={form.primary_color || '#1e3a5f'}
-                  onChange={(e) => update('primary_color', e.target.value)}
-                  className="h-10 w-16 rounded border border-input cursor-pointer"
+            <Section title="Branding">
+              <Field label="Logo URL">
+                <Input value={form.logo_url || ''} onChange={(v) => update('logo_url', v)} />
+              </Field>
+              <Field label="Primary colour">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={form.primary_color || '#1e3a5f'}
+                    onChange={(e) => update('primary_color', e.target.value)}
+                    className="h-10 w-16 rounded border border-input cursor-pointer"
+                  />
+                  <Input
+                    value={form.primary_color || ''}
+                    onChange={(v) => update('primary_color', v)}
+                  />
+                </div>
+              </Field>
+              <Field label="Purchase disclaimer">
+                <Textarea
+                  value={form.disclaimer_purchase || ''}
+                  onChange={(v) => update('disclaimer_purchase', v)}
+                  rows={3}
                 />
-                <Input
-                  value={form.primary_color || ''}
-                  onChange={(v) => update('primary_color', v)}
+              </Field>
+              <Field label="Sale disclaimer">
+                <Textarea
+                  value={form.disclaimer_sale || ''}
+                  onChange={(v) => update('disclaimer_sale', v)}
+                  rows={3}
                 />
-              </div>
-            </Field>
-            <Field label="Purchase disclaimer">
-              <Textarea
-                value={form.disclaimer_purchase || ''}
-                onChange={(v) => update('disclaimer_purchase', v)}
-                rows={3}
-              />
-            </Field>
-            <Field label="Sale disclaimer">
-              <Textarea
-                value={form.disclaimer_sale || ''}
-                onChange={(v) => update('disclaimer_sale', v)}
-                rows={3}
-              />
-            </Field>
-            <Field label="Remortgage disclaimer">
-              <Textarea
-                value={form.disclaimer_remortgage || ''}
-                onChange={(v) => update('disclaimer_remortgage', v)}
-                rows={3}
-              />
-            </Field>
-          </Section>
+              </Field>
+              <Field label="Remortgage disclaimer">
+                <Textarea
+                  value={form.disclaimer_remortgage || ''}
+                  onChange={(v) => update('disclaimer_remortgage', v)}
+                  rows={3}
+                />
+              </Field>
+            </Section>
+          </>
         )}
 
         {tab === 'form' && (
@@ -221,6 +256,20 @@ export default function SettingsPage() {
             enabled={!!form.public_quote_form_enabled}
             onEnabledChange={(v) => update('public_quote_form_enabled', v)}
             onConfigChange={updateFormConfig}
+          />
+        )}
+
+        {tab === 'instruction' && (
+          <InstructionFormTab
+            config={(form.public_form_config || DEFAULT_PUBLIC_FORM_CONFIG) as PublicFormConfig}
+            onConfigChange={updateFormConfig}
+          />
+        )}
+        {tab === 'team' && (
+          <TeamTab
+            firm={firm}
+            members={members}
+            currentUserId={user?.id || null}
           />
         )}
 
@@ -359,6 +408,7 @@ function FormTab({
 }) {
   const [search, setSearch] = useState('')
   const hiddenSet = useMemo(() => new Set(config.hidden_fields), [config.hidden_fields])
+  const requiredSet = useMemo(() => new Set(config.required_fields || []), [config.required_fields])
 
   const filteredFields = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -368,11 +418,23 @@ function FormTab({
     )
   }, [search])
 
-  function toggleField(key: string) {
-    const next = new Set(hiddenSet)
-    if (next.has(key)) next.delete(key)
-    else next.add(key)
-    onConfigChange('hidden_fields', Array.from(next))
+  function setFieldMode(key: string, mode: 'mandatory' | 'optional' | 'hidden') {
+    const nextHidden = new Set(hiddenSet)
+    const nextRequired = new Set(requiredSet)
+
+    if (mode === 'hidden') {
+      nextHidden.add(key)
+      nextRequired.delete(key)
+    } else if (mode === 'mandatory') {
+      nextHidden.delete(key)
+      nextRequired.add(key)
+    } else {
+      nextHidden.delete(key)
+      nextRequired.delete(key)
+    }
+
+    onConfigChange('hidden_fields', Array.from(nextHidden))
+    onConfigChange('required_fields', Array.from(nextRequired))
   }
 
   return (
@@ -415,7 +477,7 @@ function FormTab({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 max-h-96 overflow-y-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
           {filteredFields.map((f) => {
             const hidden = hiddenSet.has(f.key)
             return (
@@ -427,13 +489,16 @@ function FormTab({
                   <div className="text-sm font-medium text-foreground truncate">{f.label}</div>
                   <div className="text-xs text-muted-foreground truncate">{f.key}</div>
                 </div>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 ml-3 shrink-0"
-                  checked={!hidden}
-                  onChange={() => toggleField(f.key)}
-                  title={hidden ? 'Hidden — click to show' : 'Visible — click to hide'}
-                />
+                <select
+                  value={hidden ? 'hidden' : requiredSet.has(f.key) ? 'mandatory' : 'optional'}
+                  onChange={(e) => setFieldMode(f.key, e.target.value as 'mandatory' | 'optional' | 'hidden')}
+                  className="ml-3 shrink-0 rounded-md border border-input bg-background px-2 py-1 text-xs"
+                  title="Set field mode"
+                >
+                  <option value="mandatory">Mandatory</option>
+                  <option value="optional">Optional</option>
+                  <option value="hidden">Hidden</option>
+                </select>
               </label>
             )
           })}
@@ -441,6 +506,220 @@ function FormTab({
             <div className="text-sm text-muted-foreground col-span-full py-4 text-center">
               No fields match your search.
             </div>
+          )}
+        </div>
+      </Section>
+    </>
+  )
+}
+
+function InstructionFormTab({
+  config,
+  onConfigChange,
+}: {
+  config: PublicFormConfig
+  onConfigChange: <K extends keyof PublicFormConfig>(key: K, value: PublicFormConfig[K]) => void
+}) {
+  const [search, setSearch] = useState('')
+  const hiddenSet = useMemo(() => new Set(config.instruction_hidden_fields || []), [config.instruction_hidden_fields])
+  const requiredSet = useMemo(() => new Set(config.instruction_required_fields || []), [config.instruction_required_fields])
+
+  const filteredFields = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return INSTRUCTION_FORM_FIELDS
+    return INSTRUCTION_FORM_FIELDS.filter(
+      (f) => f.label.toLowerCase().includes(q) || f.key.toLowerCase().includes(q),
+    )
+  }, [search])
+
+  function setFieldMode(key: string, mode: 'mandatory' | 'optional' | 'hidden') {
+    const nextHidden = new Set(hiddenSet)
+    const nextRequired = new Set(requiredSet)
+
+    if (mode === 'hidden') {
+      nextHidden.add(key)
+      nextRequired.delete(key)
+    } else if (mode === 'mandatory') {
+      nextHidden.delete(key)
+      nextRequired.add(key)
+    } else {
+      nextHidden.delete(key)
+      nextRequired.delete(key)
+    }
+
+    onConfigChange('instruction_hidden_fields', Array.from(nextHidden))
+    onConfigChange('instruction_required_fields', Array.from(nextRequired))
+  }
+
+  return (
+    <Section title="Instruction form fields">
+      <div className="flex items-center justify-between -mt-2 mb-2">
+        <p className="text-xs text-muted-foreground">
+          Configure what appears on the instruction form and whether each field is mandatory.
+        </p>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search fields…"
+            className="pl-9 pr-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring w-56"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+        {filteredFields.map((f) => {
+          const hidden = hiddenSet.has(f.key)
+          return (
+            <label
+              key={f.key}
+              className="flex items-center justify-between py-2 border-b border-border px-2 rounded hover:bg-muted/30"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-foreground truncate">{f.label}</div>
+                <div className="text-xs text-muted-foreground truncate">{f.key}</div>
+              </div>
+              <select
+                value={hidden ? 'hidden' : requiredSet.has(f.key) ? 'mandatory' : 'optional'}
+                onChange={(e) => setFieldMode(f.key, e.target.value as 'mandatory' | 'optional' | 'hidden')}
+                className="ml-3 shrink-0 rounded-md border border-input bg-background px-2 py-1 text-xs"
+              >
+                <option value="mandatory">Mandatory</option>
+                <option value="optional">Optional</option>
+                <option value="hidden">Hidden</option>
+              </select>
+            </label>
+          )
+        })}
+      </div>
+    </Section>
+  )
+}
+
+function TeamTab({
+  firm,
+  members,
+  currentUserId,
+}: {
+  firm: Firm
+  members: FirmUser[]
+  currentUserId: string | null
+}) {
+  const queryClient = useQueryClient()
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<'admin' | 'read_only'>('read_only')
+  const currentMember = members.find((m) => m.user_id === currentUserId)
+  const canManage = currentUserId === firm.owner_user_id || currentMember?.role === 'admin'
+
+  const inviteMember = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.functions.invoke('invite-firm-user', {
+        body: { firmId: firm.id, email: email.trim(), role },
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Invitation sent')
+      setEmail('')
+      queryClient.invalidateQueries({ queryKey: ['firm-members', firm.id] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const updateMemberRole = useMutation({
+    mutationFn: async ({ memberId, nextRole }: { memberId: string; nextRole: 'admin' | 'read_only' }) => {
+      const { error } = await supabase
+        .from('firm_users')
+        .update({ role: nextRole })
+        .eq('id', memberId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Role updated')
+      queryClient.invalidateQueries({ queryKey: ['firm-members', firm.id] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const removeMember = useMutation({
+    mutationFn: async (memberId: string) => {
+      const { error } = await supabase.from('firm_users').delete().eq('id', memberId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Member removed')
+      queryClient.invalidateQueries({ queryKey: ['firm-members', firm.id] })
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  return (
+    <>
+      <Section title="Invite team member">
+        <p className="text-sm text-muted-foreground mb-3">
+          Admin members can manage data and settings (except subscription payments). Read-only members can view everything but cannot make changes.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3">
+          <Input value={email} onChange={setEmail} placeholder="colleague@firm.com" />
+          <Select
+            value={role}
+            onChange={(v) => setRole(v as 'admin' | 'read_only')}
+            options={[
+              { value: 'read_only', label: 'Read-only' },
+              { value: 'admin', label: 'Admin' },
+            ]}
+          />
+          <button
+            onClick={() => inviteMember.mutate()}
+            disabled={!canManage || inviteMember.isPending || !email.trim()}
+            className="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            Invite
+          </button>
+        </div>
+        {!canManage && (
+          <p className="text-xs text-amber-600 mt-2">You have read-only access and cannot manage members.</p>
+        )}
+      </Section>
+
+      <Section title="Current team">
+        <div className="space-y-2">
+          {members.map((m) => {
+            const isOwner = m.user_id === firm.owner_user_id
+            const isSelf = m.user_id === currentUserId
+            return (
+              <div key={m.id} className="flex items-center justify-between border border-border rounded-lg px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium">{m.user_id}{isSelf ? ' (You)' : ''}</div>
+                  <div className="text-xs text-muted-foreground">{isOwner ? 'Owner' : 'Team member'}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={isOwner ? 'admin' : m.role}
+                    disabled={!canManage || isOwner}
+                    onChange={(e) => updateMemberRole.mutate({ memberId: m.id, nextRole: e.target.value as 'admin' | 'read_only' })}
+                    className="rounded-md border border-input bg-background px-2 py-1 text-xs disabled:opacity-50"
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="read_only">Read-only</option>
+                  </select>
+                  {!isOwner && (
+                    <button
+                      onClick={() => removeMember.mutate(m.id)}
+                      disabled={!canManage || removeMember.isPending || isSelf}
+                      className="px-2 py-1 text-xs rounded border border-input hover:bg-muted disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {members.length === 0 && (
+            <p className="text-sm text-muted-foreground">No team members found yet.</p>
           )}
         </div>
       </Section>

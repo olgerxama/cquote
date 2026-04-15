@@ -45,6 +45,8 @@ export default function LeadsPage() {
 
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(0)
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -54,60 +56,67 @@ export default function LeadsPage() {
   // so staff can paste a CQ-XXXX reference and land straight on the correct lead.
   // Leads with a submitted instruction are surfaced first.
   const { data: leadsData, isLoading } = useQuery({
-    queryKey: ['admin-leads', firmId, statusFilter, searchTerm, page],
+    queryKey: ['admin-leads', firmId, statusFilter, dateFrom, dateTo],
     queryFn: async () => {
-      const trimmed = searchTerm.trim()
-
-      // Resolve any lead IDs that match a quote reference code for this firm.
-      let refLeadIds: string[] = []
-      if (trimmed) {
-        const { data: refQuotes } = await supabase
-          .from('quotes')
-          .select('lead_id')
-          .eq('firm_id', firmId!)
-          .ilike('reference_code', `%${trimmed}%`)
-        refLeadIds = (refQuotes ?? [])
-          .map((q: { lead_id: string | null }) => q.lead_id)
-          .filter((x): x is string => !!x)
-      }
-
       let query = supabase
         .from('leads')
-        .select('*, quotes(reference_code)', { count: 'exact' })
+        .select('*, quotes(reference_code)')
         .eq('firm_id', firmId!)
         // Instructed leads first, then newest.
         .order('instruction_submitted_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter)
       }
-      if (trimmed) {
-        const escaped = trimmed.replace(/[%,]/g, '')
-        const orClauses = [
-          `full_name.ilike.%${escaped}%`,
-          `email.ilike.%${escaped}%`,
-        ]
-        if (refLeadIds.length > 0) {
-          orClauses.push(`id.in.(${refLeadIds.join(',')})`)
-        }
-        query = query.or(orClauses.join(','))
-      }
+      if (dateFrom) query = query.gte('created_at', `${dateFrom}T00:00:00`)
+      if (dateTo) query = query.lte('created_at', `${dateTo}T23:59:59`)
 
-      const { data, count } = await query
-      return { leads: (data ?? []) as Lead[], total: count ?? 0 }
+      const { data } = await query
+      return (data ?? []) as Lead[]
     },
     enabled: !!firmId,
   })
 
-  const leads = leadsData?.leads ?? []
-  const totalCount = leadsData?.total ?? 0
+  const leads = leadsData ?? []
+
+  const filteredLeads = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    if (!term) return leads
+
+    return leads.filter((lead) => {
+      const quotes = (lead as unknown as Record<string, unknown>).quotes as { reference_code: string | null }[] | null
+      const ref = quotes?.[0]?.reference_code ?? ''
+      const createdDate = formatDate(lead.created_at).toLowerCase()
+      const instructionDate = lead.instruction_submitted_at ? formatDate(lead.instruction_submitted_at).toLowerCase() : ''
+      const price = formatCurrency(lead.property_value || 0).toLowerCase()
+      const rawPrice = String(lead.property_value ?? '').toLowerCase()
+
+      return [
+        lead.full_name,
+        lead.email,
+        lead.service_type,
+        ref,
+        createdDate,
+        instructionDate,
+        price,
+        rawPrice,
+      ]
+        .filter(Boolean)
+        .some((v) => v.toLowerCase().includes(term))
+    })
+  }, [leads, searchTerm])
+
+  const totalCount = filteredLeads.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+  const pagedLeads = useMemo(
+    () => filteredLeads.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [filteredLeads, page]
+  )
 
   const selectedLead = useMemo(
-    () => leads.find((l) => l.id === selectedLeadId) ?? null,
-    [leads, selectedLeadId]
+    () => filteredLeads.find((l) => l.id === selectedLeadId) ?? null,
+    [filteredLeads, selectedLeadId]
   )
 
   return (
@@ -127,7 +136,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+      <div className="flex flex-col lg:flex-row gap-3 mb-5">
         <div className="flex rounded-lg border border-border bg-card overflow-hidden">
           {STATUS_TABS.map((tab) => (
             <button
@@ -148,19 +157,44 @@ export default function LeadsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search by name or email..."
+            placeholder="Search name, email, ref, date, or price..."
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); setPage(0) }}
             className="w-full rounded-lg border border-border bg-card pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">From</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(0) }}
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">To</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); setPage(0) }}
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => { setDateFrom(''); setDateTo(''); setPage(0) }}
+          className="self-start rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+        >
+          Clear
+        </button>
       </div>
 
       {/* Table */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         {isLoading ? (
           <div className="p-12 text-center text-muted-foreground">Loading leads...</div>
-        ) : leads.length === 0 ? (
+        ) : pagedLeads.length === 0 ? (
           <div className="p-12 text-center text-muted-foreground">
             <Users className="h-10 w-10 mx-auto mb-3 opacity-50" />
             <p>No leads found.</p>
@@ -180,7 +214,7 @@ export default function LeadsPage() {
                 </tr>
               </thead>
               <tbody>
-                {leads.map((lead) => (
+                {pagedLeads.map((lead) => (
                   <tr
                     key={lead.id}
                     onClick={() => setSelectedLeadId(lead.id)}
@@ -513,6 +547,7 @@ function QuoteSection({
         auction_purchase: a.auction_purchase ?? 'no',
         probate_related: a.probate_related ?? 'no',
         speed_essential: a.speed_essential ?? 'no',
+        full_address: a.full_address ?? '',
         lender_name: a.lender_name ?? '',
         source_of_funds_notes: a.source_of_funds_notes ?? '',
         chain_related_notes: a.chain_related_notes ?? '',

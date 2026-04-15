@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -10,20 +10,48 @@ import { ClipboardList, X } from 'lucide-react'
 export default function InstructionsPage() {
   const { firmId } = useAuth()
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
 
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['instructions', firmId],
+    queryKey: ['instructions', firmId, dateFrom, dateTo],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from('leads')
         .select('*, quotes(reference_code)')
         .eq('firm_id', firmId!)
         .not('instruction_submitted_at', 'is', null)
         .order('instruction_submitted_at', { ascending: false })
+
+      if (dateFrom) query = query.gte('instruction_submitted_at', `${dateFrom}T00:00:00`)
+      if (dateTo) query = query.lte('instruction_submitted_at', `${dateTo}T23:59:59`)
+
+      const { data } = await query
       return (data ?? []) as Lead[]
     },
     enabled: !!firmId,
   })
+
+  const filteredLeads = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    if (!term) return leads
+
+    return leads.filter((lead) => {
+      const quotes = (lead as unknown as Record<string, unknown>).quotes as { reference_code: string | null }[] | null
+      const ref = quotes?.[0]?.reference_code ?? ''
+      const service = ServiceLabels[lead.service_type as ServiceType] ?? lead.service_type
+
+      return [
+        ref,
+        lead.full_name,
+        lead.email,
+        service,
+      ]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(term))
+    })
+  }, [leads, searchTerm])
 
   return (
     <div>
@@ -32,10 +60,45 @@ export default function InstructionsPage() {
         <p className="text-muted-foreground mt-1">Leads that have submitted instruction forms.</p>
       </div>
 
+      <div className="mb-4 flex flex-col lg:flex-row gap-3">
+        <input
+          type="text"
+          placeholder="Search ref, name, email, or service..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full lg:max-w-sm rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">From</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">To</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => { setDateFrom(''); setDateTo('') }}
+          className="self-start rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+        >
+          Clear
+        </button>
+      </div>
+
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         {isLoading ? (
           <div className="p-12 text-center text-muted-foreground">Loading instructions...</div>
-        ) : leads.length === 0 ? (
+        ) : filteredLeads.length === 0 ? (
           <div className="p-12 text-center text-muted-foreground">
             <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-50" />
             <p>No instructions received yet.</p>
@@ -53,7 +116,7 @@ export default function InstructionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {leads.map((lead) => {
+                {filteredLeads.map((lead) => {
                   const instructionDate = lead.instruction_submitted_at
                     ? formatDate(lead.instruction_submitted_at)
                     : '—'
@@ -89,6 +152,10 @@ export default function InstructionsPage() {
       {selectedLead && (
         <InstructionDetailDialog
           lead={selectedLead}
+          referenceCode={(() => {
+            const quotes = (selectedLead as unknown as Record<string, unknown>).quotes as { reference_code: string | null }[] | null
+            return quotes?.[0]?.reference_code ?? null
+          })()}
           onClose={() => setSelectedLead(null)}
         />
       )}
@@ -99,9 +166,11 @@ export default function InstructionsPage() {
 // ---------- Instruction Detail Dialog ----------
 function InstructionDetailDialog({
   lead,
+  referenceCode,
   onClose,
 }: {
   lead: Lead
+  referenceCode?: string | null
   onClose: () => void
 }) {
   const answers = lead.answers as Record<string, any>
@@ -150,7 +219,10 @@ function InstructionDetailDialog({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-xl max-h-[85vh] bg-card rounded-xl border border-border shadow-xl overflow-y-auto">
         <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between z-10">
-          <h2 className="text-lg font-semibold text-foreground">Instruction Details</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Instruction Details</h2>
+            {referenceCode && <p className="text-xs font-mono text-muted-foreground mt-0.5">{referenceCode}</p>}
+          </div>
           <button onClick={onClose} className="p-1 rounded hover:bg-muted transition-colors">
             <X className="h-5 w-5" />
           </button>

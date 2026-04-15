@@ -51,6 +51,7 @@ const defaultAdditional: AdditionalInfo = {
   auction_purchase: 'no',
   probate_related: 'no',
   speed_essential: 'no',
+  full_address: '',
   lender_name: '',
   source_of_funds_notes: '',
   chain_related_notes: '',

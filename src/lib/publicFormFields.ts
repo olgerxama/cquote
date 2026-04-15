@@ -42,6 +42,7 @@ export const PUBLIC_FORM_FIELDS: PublicFormField[] = [
   { key: 'additional.auction_purchase', label: 'Auction Purchase', section: 'additional' },
   { key: 'additional.probate_related', label: 'Probate Related', section: 'additional' },
   { key: 'additional.speed_essential', label: 'Urgency Essential', section: 'additional' },
+  { key: 'additional.full_address', label: 'Full Address', section: 'additional' },
   { key: 'additional.lender_name', label: 'Lender Name', section: 'additional' },
   { key: 'additional.source_of_funds_notes', label: 'Source of Funds Notes', section: 'additional' },
   { key: 'additional.chain_related_notes', label: 'Chain Related Notes', section: 'additional' },
