@@ -149,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         localStorage.removeItem('cq_preferred_firm_id')
         const invitedFirmId = typeof userMetadata.firm_id === 'string' ? userMetadata.firm_id : null
-        if (invitedFirmId) {
+        if (invitedFirmId || preferredFirmId) {
           setNoFirmMessage('Your account is no longer attached to a firm. Please contact your firm admin to be re-invited.')
         } else {
           setNoFirmMessage(null)

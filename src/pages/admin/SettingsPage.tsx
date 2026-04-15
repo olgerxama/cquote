@@ -622,6 +622,7 @@ function TeamTab({
   const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<'admin' | 'read_only'>('read_only')
+  const [pendingRemove, setPendingRemove] = useState<{ id: string; label: string } | null>(null)
   const currentMember = members.find((m) => m.user_id === currentUserId)
   const canManage = currentUserId === firm.owner_user_id || currentMember?.role === 'admin'
 
@@ -726,10 +727,7 @@ function TeamTab({
                   </select>
                   {!isOwner && (
                     <button
-                      onClick={() => {
-                        const ok = window.confirm('Remove this team member from your firm? They will lose dashboard access immediately.')
-                        if (ok) removeMember.mutate(m.id)
-                      }}
+                      onClick={() => setPendingRemove({ id: m.id, label: m.email || m.user_id })}
                       disabled={!canManage || removeMember.isPending || isSelf}
                       className="px-2 py-1 text-xs rounded border border-input hover:bg-muted disabled:opacity-50"
                     >
@@ -745,6 +743,35 @@ function TeamTab({
           )}
         </div>
       </Section>
+
+      {pendingRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setPendingRemove(null)} />
+          <div className="relative w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">Remove team member?</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Remove <span className="font-medium text-foreground">{pendingRemove.label}</span> from this firm? They will lose dashboard access immediately.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setPendingRemove(null)}
+                className="rounded-md border border-input px-3 py-2 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  removeMember.mutate(pendingRemove.id)
+                  setPendingRemove(null)
+                }}
+                className="rounded-md bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+              >
+                Remove member
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
