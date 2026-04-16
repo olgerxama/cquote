@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Scale } from 'lucide-react'
+import { supabase } from '@/integrations/supabase/client'
 import { toast } from 'sonner'
 
 export default function SignupPage() {
@@ -9,8 +10,21 @@ export default function SignupPage() {
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
-    toast.success('Continue to verification to create your account.')
-    navigate(`/admin/reset-password?email=${encodeURIComponent(email)}&flow=signup`)
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: `${window.location.origin}/admin/onboarding`,
+      },
+    })
+
+    if (error) {
+      toast.error(error.message)
+      return
+    }
+
+    toast.success('Magic link sent. Check your email to finish signup.')
+    navigate('/admin/login')
   }
 
   return (
