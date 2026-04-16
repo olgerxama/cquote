@@ -8,8 +8,12 @@ import {
   Zap,
   ArrowRight,
   CheckCircle2,
+  XCircle,
   Code,
   Mail,
+  Home,
+  PhoneCall,
+  Clock3,
 } from 'lucide-react'
 
 export default function LandingPage() {
@@ -51,38 +55,82 @@ export default function LandingPage() {
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-chart-2/5" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-24 lg:pt-32 lg:pb-36">
-          <div className="max-w-3xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-6">
-              <Zap className="h-4 w-4" />
-              Built for UK Conveyancing Firms
+          <div className="grid lg:grid-cols-2 gap-14 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-6">
+                <Zap className="h-4 w-4" />
+                Built for UK Conveyancing Firms
+              </div>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground tracking-tight leading-tight">
+                Win More Local Clients with{' '}
+                <span className="text-primary">Instant Conveyancing Quotes</span>
+              </h1>
+              <p className="mt-6 text-lg text-muted-foreground max-w-2xl leading-relaxed">
+                Most firms still make buyers wait. ConveyQuote helps you show transparent prices instantly,
+                capture qualified leads, and convert faster than firms still relying on contact forms.
+              </p>
+              <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
+                <Link
+                  to="/admin/signup"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-8 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+                >
+                  Start Free Trial
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
+                <Link
+                  to="/quote/demo"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg border border-border px-8 py-3 text-base font-medium text-foreground hover:bg-accent transition-colors"
+                >
+                  See Demo Quote
+                </Link>
+              </div>
+              <div className="mt-8 flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-green-500" /> No credit card required</span>
+                <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-green-500" /> Setup in minutes</span>
+                <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-green-500" /> White-label ready</span>
+              </div>
             </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground tracking-tight leading-tight">
-              Instant Conveyancing Quotes,{' '}
-              <span className="text-primary">Automated Workflows</span>
-            </h1>
-            <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              Embed a white-label quote calculator on your website. Capture leads automatically,
-              send professional estimates, and manage your pipeline from one dashboard.
-            </p>
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                to="/admin/signup"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-8 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
-              >
-                Start Free Trial
-                <ArrowRight className="h-5 w-5" />
-              </Link>
-              <Link
-                to="/quote/demo"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg border border-border px-8 py-3 text-base font-medium text-foreground hover:bg-accent transition-colors"
-              >
-                See Demo Quote
-              </Link>
+            <div className="relative">
+              <img
+                src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1200&q=80"
+                alt="Modern houses in a UK residential area"
+                className="w-full h-[420px] object-cover rounded-2xl shadow-2xl"
+              />
+              <div className="absolute -bottom-6 -left-6 rounded-xl border border-border bg-card p-4 shadow-xl max-w-xs">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Why firms convert more with quotes</p>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center gap-2"><Home className="h-4 w-4 text-primary" /> Buyers see realistic costs now</li>
+                  <li className="flex items-center gap-2"><PhoneCall className="h-4 w-4 text-primary" /> Fewer repetitive fee calls</li>
+                  <li className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-primary" /> Faster response, more instructions</li>
+                </ul>
+              </div>
             </div>
-            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-green-500" /> No credit card required</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-green-500" /> Setup in minutes</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-green-500" /> White-label ready</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Founder Story */}
+      <section className="py-20 lg:py-24">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <img
+                src="https://images.unsplash.com/photo-1556157382-97eda2d62296?auto=format&fit=crop&w=1200&q=80"
+                alt="Home buyer reviewing options online"
+                className="w-full h-[360px] object-cover rounded-2xl"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-primary">Why ConveyQuote exists</p>
+              <h2 className="mt-3 text-3xl sm:text-4xl font-bold text-foreground">Built from a real client frustration</h2>
+              <p className="mt-5 text-lg text-muted-foreground leading-relaxed">
+                I visited more than 20 conveyancing firm websites while trying to choose a solicitor. Only two
+                gave an instant quote. Most required contact forms, phone calls, and waiting for follow-up.
+              </p>
+              <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
+                ConveyQuote was built to fix that gap: help local firms show transparent pricing immediately,
+                so buyers stay on your website instead of moving to comparison sites.
+              </p>
             </div>
           </div>
         </div>
@@ -189,7 +237,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-foreground">Simple, Transparent Pricing</h2>
-            <p className="mt-4 text-lg text-muted-foreground">Start free. Upgrade when you are ready.</p>
+            <p className="mt-4 text-lg text-muted-foreground">Clear Free vs Premium value, with no hidden setup cost.</p>
           </div>
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {/* Free Plan */}
@@ -201,7 +249,13 @@ export default function LandingPage() {
               </div>
               <p className="mt-4 text-muted-foreground">Perfect for getting started and testing the platform.</p>
               <ul className="mt-8 space-y-3">
-                {['Lead capture & pipeline', 'Configurable pricing bands', 'Manual review workflow', 'Basic embed widget'].map((f) => (
+                {[
+                  'Lead capture & pipeline',
+                  'Configurable pricing bands',
+                  'Manual review workflow',
+                  'Basic embed widget',
+                  'Essential reporting',
+                ].map((f) => (
                   <li key={f} className="flex items-start gap-2 text-sm">
                     <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
                     <span className="text-foreground">{f}</span>
@@ -230,7 +284,7 @@ export default function LandingPage() {
               <ul className="mt-8 space-y-3">
                 {[
                   'Everything in Free',
-                  'Instant quote display',
+                  'Instant quote display on your website',
                   'Estimate & invoice documents',
                   'Automated quote emails',
                   'Discount code system',
@@ -250,6 +304,29 @@ export default function LandingPage() {
               >
                 Start Free Trial
               </Link>
+            </div>
+          </div>
+          <div className="mt-10 rounded-xl border border-border bg-card p-6 max-w-4xl mx-auto">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Feature comparison at a glance</h3>
+            <div className="grid sm:grid-cols-2 gap-4 text-sm">
+              {[
+                { label: 'Website quote shown to client instantly', free: false, pro: true },
+                { label: 'Lead capture and case tracking', free: true, pro: true },
+                { label: 'Automated email estimates with PDF', free: false, pro: true },
+                { label: 'Priority support', free: false, pro: true },
+              ].map((row) => (
+                <div key={row.label} className="rounded-lg border border-border p-4">
+                  <p className="font-medium text-foreground">{row.label}</p>
+                  <div className="mt-3 flex gap-6">
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      Free {row.free ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-rose-500" />}
+                    </span>
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      Premium {row.pro ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-rose-500" />}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
