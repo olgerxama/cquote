@@ -159,7 +159,7 @@ export default function LandingPage() {
               {
                 icon: Mail,
                 title: 'Automated Emails',
-                description: 'Send professional quote estimates and invoices via email with PDF attachments. Auto-send or manual control.',
+                description: 'Send professional quote estimate invoices via email with PDF attachments. Auto-send or manual control.',
               },
               {
                 icon: BarChart3,
@@ -279,7 +279,7 @@ export default function LandingPage() {
                 {[
                   'Everything in Free',
                   'Instant quote display on your website',
-                  'Estimate & invoice documents',
+                  'Quote estimate invoice documents',
                   'Automated quote emails',
                   'Discount code system',
                   'Instruction workflow',
