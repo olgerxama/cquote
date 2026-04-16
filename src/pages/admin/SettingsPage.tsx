@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
-import { Plus, Trash2, Search, Copy, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, Search, Copy, ExternalLink, CreditCard } from 'lucide-react'
 import { PUBLIC_FORM_FIELDS } from '@/lib/publicFormFields'
 import { DEFAULT_PUBLIC_FORM_CONFIG } from '@/types'
+import { hasProfessionalAccess } from '@/lib/billing'
 import type { Firm, FirmUser, ManualReviewCondition, PublicFormConfig } from '@/types'
 
 const REVIEW_CONDITION_FIELDS = [
@@ -148,6 +149,19 @@ export default function SettingsPage() {
   if (isLoading) return <div className="text-muted-foreground">Loading…</div>
   if (!firm) return <div className="text-muted-foreground">Firm not found</div>
   const canManageSettings = isPlatformOwner || user?.id === firm.owner_user_id || firmRole === 'admin'
+  const isFirmOwner = user?.id === firm.owner_user_id
+  const isProAccess = hasProfessionalAccess({
+    plan_type: (form.plan_type || firm.plan_type) as Firm['plan_type'],
+    stripe_subscription_status: (form.stripe_subscription_status || firm.stripe_subscription_status) as string | null,
+  })
+
+  function withPremiumGuard(nextValue: boolean, fallback: boolean): boolean {
+    if (!isProAccess && nextValue) {
+      toast.error('This feature is available on the Professional plan.')
+      return fallback
+    }
+    return nextValue
+  }
 
   const tabs: Array<{ key: Tab; label: string }> = [
     { key: 'firm', label: 'Firm' },
@@ -160,7 +174,7 @@ export default function SettingsPage() {
     { key: 'embed', label: 'Embed' },
   ]
 
-  const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(firm), [form, firm])
+  const isDirty = JSON.stringify(form) !== JSON.stringify(firm)
 
   return (
     <div className="max-w-4xl">
@@ -201,14 +215,10 @@ export default function SettingsPage() {
                 <Input value={form.slug || ''} onChange={(v) => update('slug', v)} />
               </Field>
               <Field label="Plan">
-                <Select
-                  value={form.plan_type || 'free'}
-                  onChange={(v) => update('plan_type', v as Firm['plan_type'])}
-                  options={[
-                    { value: 'free', label: 'Free' },
-                    { value: 'professional', label: 'Professional' },
-                  ]}
-                />
+                <div className="rounded-md border border-border px-3 py-2 text-sm bg-muted/40">
+                  <div className="font-medium">{isProAccess ? 'Professional' : 'Free'}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Manage billing in the Billing section below.</p>
+                </div>
               </Field>
               <Field label="Admin notes" hint="Internal notes (not shown to clients)">
                 <Textarea
@@ -218,6 +228,11 @@ export default function SettingsPage() {
                 />
               </Field>
             </Section>
+            <BillingSection
+              firm={firm}
+              isFirmOwner={isFirmOwner}
+              hasProAccess={isProAccess}
+            />
 
             <Section title="Branding">
               <Field label="Logo URL">
@@ -268,6 +283,7 @@ export default function SettingsPage() {
             enabled={!!form.public_quote_form_enabled}
             onEnabledChange={(v) => update('public_quote_form_enabled', v)}
             onConfigChange={updateFormConfig}
+            canUsePremium={isProAccess}
           />
         )}
 
@@ -275,6 +291,7 @@ export default function SettingsPage() {
           <InstructionFormTab
             config={(form.public_form_config || DEFAULT_PUBLIC_FORM_CONFIG) as PublicFormConfig}
             onConfigChange={updateFormConfig}
+            canUsePremium={isProAccess}
           />
         )}
         {tab === 'team' && (
@@ -290,14 +307,18 @@ export default function SettingsPage() {
             <Toggle
               label="Show instant quote"
               description="Display the calculated total on the public form immediately."
-              checked={!!form.show_instant_quote}
-              onChange={(v) => update('show_instant_quote', v)}
+              checked={isProAccess ? !!form.show_instant_quote : false}
+              onChange={(v) => update('show_instant_quote', withPremiumGuard(v, !!form.show_instant_quote))}
+              premiumOnly
+              locked={!isProAccess}
             />
             <Toggle
               label="Show estimate document"
               description="Show a detailed PDF-style estimate document on completion."
-              checked={!!form.show_estimate_document}
-              onChange={(v) => update('show_estimate_document', v)}
+              checked={isProAccess ? !!form.show_estimate_document : false}
+              onChange={(v) => update('show_estimate_document', withPremiumGuard(v, !!form.show_estimate_document))}
+              premiumOnly
+              locked={!isProAccess}
             />
             <Toggle
               label="Require admin review"
@@ -308,8 +329,10 @@ export default function SettingsPage() {
             <Toggle
               label="Auto-send quote emails"
               description="Automatically send quote emails to customers once a lead is captured."
-              checked={!!form.auto_send_quote_emails}
-              onChange={(v) => update('auto_send_quote_emails', v)}
+              checked={isProAccess ? !!form.auto_send_quote_emails : false}
+              onChange={(v) => update('auto_send_quote_emails', withPremiumGuard(v, !!form.auto_send_quote_emails))}
+              premiumOnly
+              locked={!isProAccess}
             />
           </Section>
         )}
@@ -412,13 +435,16 @@ function FormTab({
   enabled,
   onEnabledChange,
   onConfigChange,
+  canUsePremium,
 }: {
   config: PublicFormConfig
   enabled: boolean
   onEnabledChange: (v: boolean) => void
   onConfigChange: <K extends keyof PublicFormConfig>(key: K, value: PublicFormConfig[K]) => void
+  canUsePremium: boolean
 }) {
   const [search, setSearch] = useState('')
+  const PREMIUM_SECTION_KEYS = new Set<keyof PublicFormConfig>(['show_discount_code', 'show_instruct_button'])
   const hiddenSet = useMemo(() => new Set(config.hidden_fields), [config.hidden_fields])
   const requiredSet = useMemo(() => new Set(config.required_fields || []), [config.required_fields])
 
@@ -461,15 +487,21 @@ function FormTab({
       </Section>
 
       <Section title="Form sections">
-        {SECTION_TOGGLES.map((t) => (
+        {SECTION_TOGGLES.map((t) => {
+          const isPremiumToggle = PREMIUM_SECTION_KEYS.has(t.key)
+          const locked = isPremiumToggle && !canUsePremium
+          return (
           <Toggle
             key={t.key as string}
             label={t.label}
             description={t.description}
-            checked={!!config[t.key]}
-            onChange={(v) => onConfigChange(t.key, v as PublicFormConfig[typeof t.key])}
+            checked={locked ? false : !!config[t.key]}
+            onChange={(v) => onConfigChange(t.key, (locked && v ? false : v) as PublicFormConfig[typeof t.key])}
+            premiumOnly={isPremiumToggle}
+            locked={locked}
           />
-        ))}
+          )
+        })}
       </Section>
 
       <Section title="Individual fields">
@@ -528,9 +560,11 @@ function FormTab({
 function InstructionFormTab({
   config,
   onConfigChange,
+  canUsePremium,
 }: {
   config: PublicFormConfig
   onConfigChange: <K extends keyof PublicFormConfig>(key: K, value: PublicFormConfig[K]) => void
+  canUsePremium: boolean
 }) {
   const [search, setSearch] = useState('')
   const hiddenSet = useMemo(() => new Set(config.instruction_hidden_fields || []), [config.instruction_hidden_fields])
@@ -565,6 +599,11 @@ function InstructionFormTab({
 
   return (
     <Section title="Instruction form fields">
+      {!canUsePremium && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          <strong>Professional feature:</strong> instruction workflow settings apply only on Professional plans.
+        </div>
+      )}
       <div className="flex items-center justify-between -mt-2 mb-2">
         <p className="text-xs text-muted-foreground">
           Configure what appears on the instruction form and whether each field is mandatory.
@@ -928,6 +967,104 @@ function EmbedTab({ firm }: { firm: Firm }) {
   )
 }
 
+function BillingSection({
+  firm,
+  isFirmOwner,
+  hasProAccess,
+}: {
+  firm: Firm
+  isFirmOwner: boolean
+  hasProAccess: boolean
+}) {
+  const [loadingCheckout, setLoadingCheckout] = useState(false)
+  const [loadingPortal, setLoadingPortal] = useState(false)
+
+  const status = (firm.stripe_subscription_status || 'none').toLowerCase()
+  const periodEnd = firm.stripe_subscription_current_period_end
+    ? new Date(firm.stripe_subscription_current_period_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null
+  const hasSubscriptionRecord = !!firm.stripe_subscription_id || status !== 'none'
+  const showCancellationNotice = hasSubscriptionRecord && !!periodEnd && !!firm.stripe_subscription_cancel_at_period_end
+
+  async function openCheckout() {
+    setLoadingCheckout(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('create-stripe-checkout-session', {
+        body: { returnUrl: `${window.location.origin}/admin/settings` },
+      })
+      if (error) throw error
+      if (!data?.url) throw new Error('No checkout URL returned')
+      window.location.href = data.url as string
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      toast.error(`Unable to open checkout: ${message}`)
+    } finally {
+      setLoadingCheckout(false)
+    }
+  }
+
+  async function openPortal() {
+    setLoadingPortal(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('create-stripe-customer-portal', {
+        body: { returnUrl: `${window.location.origin}/admin/settings` },
+      })
+      if (error) throw error
+      if (!data?.url) throw new Error('No portal URL returned')
+      window.location.href = data.url as string
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      toast.error(`Unable to open billing portal: ${message}`)
+    } finally {
+      setLoadingPortal(false)
+    }
+  }
+
+  return (
+    <>
+      <Section title="Billing">
+        <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
+          <div className="text-sm text-muted-foreground">Current plan</div>
+          <div className="text-lg font-semibold text-foreground">{hasProAccess ? 'Professional (£49/month)' : 'Free'}</div>
+          <div className="text-xs text-muted-foreground">Stripe status: <span className="font-medium text-foreground">{status}</span></div>
+          {hasSubscriptionRecord && periodEnd && (
+            <div className="text-xs text-muted-foreground">
+              {showCancellationNotice ? 'Access ends on' : 'Renews on'}{' '}
+              <span className="font-medium text-foreground">{periodEnd}</span>
+            </div>
+          )}
+          {showCancellationNotice && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+              Subscription is cancelled and set to end at the current billing period.
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-3 pt-2">
+          {!hasProAccess && (
+            <button
+              onClick={openCheckout}
+              disabled={!isFirmOwner || loadingCheckout}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              <CreditCard className="h-4 w-4" />
+              {loadingCheckout ? 'Opening checkout…' : 'Upgrade to Professional'}
+            </button>
+          )}
+          <button
+            onClick={openPortal}
+            disabled={!isFirmOwner || loadingPortal || !firm.stripe_customer_id}
+            className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+          >
+            <ExternalLink className="h-4 w-4" />
+            {loadingPortal ? 'Opening portal…' : 'Manage billing'}
+          </button>
+        </div>
+        {!isFirmOwner && <p className="text-xs text-amber-700">Only the firm owner can access billing actions.</p>}
+      </Section>
+    </>
+  )
+}
+
 // ---------- Shared inputs ----------
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -1025,21 +1162,30 @@ function Toggle({
   description,
   checked,
   onChange,
+  locked = false,
+  premiumOnly = false,
 }: {
   label: string
   description?: string
   checked: boolean
   onChange: (v: boolean) => void
+  locked?: boolean
+  premiumOnly?: boolean
 }) {
   return (
     <div className="flex items-start justify-between gap-4 py-2 border-b border-border last:border-b-0">
       <div>
-        <div className="font-medium text-sm text-foreground">{label}</div>
+        <div className="font-medium text-sm text-foreground">
+          {label}
+          {premiumOnly && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">Pro</span>}
+        </div>
         {description && <div className="text-xs text-muted-foreground mt-0.5">{description}</div>}
+        {locked && <div className="text-xs text-amber-700 mt-1">Upgrade to Professional to enable this.</div>}
       </div>
       <input
         type="checkbox"
-        className="h-5 w-9 mt-1 appearance-none rounded-full bg-muted transition-colors checked:bg-primary relative cursor-pointer before:content-[''] before:absolute before:h-4 before:w-4 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform checked:before:translate-x-4"
+        disabled={locked}
+        className="h-5 w-9 mt-1 appearance-none rounded-full bg-muted transition-colors checked:bg-primary relative cursor-pointer before:content-[''] before:absolute before:h-4 before:w-4 before:rounded-full before:bg-white before:top-0.5 before:left-0.5 before:transition-transform checked:before:translate-x-4 disabled:cursor-not-allowed disabled:opacity-50"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
       />

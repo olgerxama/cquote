@@ -21,6 +21,9 @@ import OwnerLayout from '@/pages/owner/OwnerLayout'
 import OwnerFirmsPage from '@/pages/owner/OwnerFirmsPage'
 import OwnerFirmDetailPage from '@/pages/owner/OwnerFirmDetailPage'
 import OwnerAnalyticsPage from '@/pages/owner/OwnerAnalyticsPage'
+import OwnerLeadsPage from '@/pages/owner/OwnerLeadsPage'
+import OwnerInstructionsPage from '@/pages/owner/OwnerInstructionsPage'
+import OwnerReportsPage from '@/pages/owner/OwnerReportsPage'
 
 export default function App() {
   return (
@@ -54,8 +57,11 @@ export default function App() {
       <Route element={<OwnerProtectedRoute />}>
         <Route element={<OwnerLayout />}>
           <Route path="/owner" element={<OwnerFirmsPage />} />
+          <Route path="/owner/leads" element={<OwnerLeadsPage />} />
+          <Route path="/owner/instructions" element={<OwnerInstructionsPage />} />
           <Route path="/owner/firms/:firmId" element={<OwnerFirmDetailPage />} />
           <Route path="/owner/analytics" element={<OwnerAnalyticsPage />} />
+          <Route path="/owner/reports" element={<OwnerReportsPage />} />
         </Route>
       </Route>
 
