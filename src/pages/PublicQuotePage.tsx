@@ -451,11 +451,11 @@ export default function PublicQuotePage() {
     <div className={`bg-muted/30 ${isEmbed ? 'p-4' : 'min-h-screen py-8 px-4'}`}>
       <div className="max-w-2xl mx-auto">
         {!isEmbed && (
-          <div className="text-center mb-8">
+          <div className="mb-8 px-1 sm:px-2">
             {firm.logo_url ? (
-              <img src={firm.logo_url} alt={firm.name} className="h-12 mx-auto mb-2" />
+              <img src={firm.logo_url} alt={firm.name} className="h-12 mb-2" />
             ) : (
-              <Scale className="h-8 w-8 mx-auto mb-2" style={{ color: primaryColor }} />
+              <Scale className="h-8 w-8 mb-2" style={{ color: primaryColor }} />
             )}
             <h1 className="text-2xl font-bold" style={{ color: primaryColor }}>{firm.name}</h1>
             <p className="text-muted-foreground mt-1">Get your instant conveyancing quote</p>
