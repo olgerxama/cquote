@@ -1,7 +1,12 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Scale, ArrowLeft } from 'lucide-react'
 
 export default function TermsPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [])
+
   return (
     <div className="min-h-screen bg-muted/20">
       <header className="border-b border-border bg-white/90 backdrop-blur-sm sticky top-0 z-30">
