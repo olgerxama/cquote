@@ -10,15 +10,22 @@ const PAGE_SIZE = 25
 
 export default function OwnerFirmsPage() {
   const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const querySearch = search.trim()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['owner-firms', page],
+    queryKey: ['owner-firms', page, querySearch],
     queryFn: async () => {
-      const { data, count, error } = await supabase
+      let query = supabase
         .from('firms')
         .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
+      if (querySearch) {
+        const safe = querySearch.replace(/,/g, ' ')
+        query = query.or(`name.ilike.%${safe}%,slug.ilike.%${safe}%`)
+      }
+      const { data, count, error } = await query
       if (error) throw error
       return { rows: (data ?? []) as Firm[], total: count ?? 0 }
     },
@@ -47,6 +54,14 @@ export default function OwnerFirmsPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">All Firms</h1>
         <p className="text-muted-foreground mt-1">Paginated platform-wide firm management.</p>
+      </div>
+      <div className="mb-4">
+        <input
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+          placeholder="Search firm name or slug..."
+          className="w-full md:max-w-sm rounded-lg border border-input bg-background px-3 py-2 text-sm"
+        />
       </div>
 
       {isLoading ? (
