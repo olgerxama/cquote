@@ -7,9 +7,10 @@ import { toast } from 'sonner'
 export default function ResetPasswordPage() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
+  const [otpCode, setOtpCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [step, setStep] = useState<'request' | 'setPassword'>('request')
+  const [step, setStep] = useState<'request' | 'verify' | 'setPassword'>('request')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -39,7 +40,25 @@ export default function ResetPasswordPage() {
       toast.error(error.message)
       return
     }
+    setStep('verify')
     toast.success('Password reset email sent. Check your inbox.')
+  }
+
+  async function handleVerifyOtp(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: otpCode.trim(),
+      type: 'recovery',
+    })
+    setLoading(false)
+    if (error) {
+      toast.error(error.message)
+      return
+    }
+    setStep('setPassword')
+    toast.success('Code verified. Set your new password.')
   }
 
   async function handleSetPassword(e: React.FormEvent) {
@@ -74,15 +93,19 @@ export default function ResetPasswordPage() {
             <span className="text-2xl font-bold text-foreground">ConveyQuote</span>
           </Link>
           <p className="mt-2 text-muted-foreground">
-            {step === 'request' ? 'Request a password reset email.' : 'Set your new password.'}
+            {step === 'request'
+              ? 'Request a password reset email.'
+              : step === 'verify'
+                ? 'Enter the OTP code from your email.'
+                : 'Set your new password.'}
           </p>
         </div>
 
         <form
-          onSubmit={step === 'request' ? handleRequestReset : handleSetPassword}
+          onSubmit={step === 'request' ? handleRequestReset : step === 'verify' ? handleVerifyOtp : handleSetPassword}
           className="bg-card rounded-xl border border-border p-8 shadow-sm space-y-4"
         >
-          {step === 'request' && (
+          {(step === 'request' || step === 'verify') && (
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">Email</label>
             <input
@@ -93,8 +116,23 @@ export default function ResetPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="you@lawfirm.co.uk"
+              disabled={step !== 'request'}
             />
           </div>
+          )}
+
+          {step === 'verify' && (
+            <div>
+              <label htmlFor="otp" className="block text-sm font-medium text-foreground mb-1.5">One-time code</label>
+              <input
+                id="otp"
+                required
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Enter OTP code"
+              />
+            </div>
           )}
 
           {step === 'setPassword' && (
@@ -136,7 +174,9 @@ export default function ResetPasswordPage() {
               ? 'Please wait...'
               : step === 'request'
                 ? 'Send reset email'
-                : 'Set new password'}
+                : step === 'verify'
+                  ? 'Verify code'
+                  : 'Set new password'}
           </button>
 
           <p className="text-center text-sm text-muted-foreground">
