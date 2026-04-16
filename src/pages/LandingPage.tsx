@@ -62,8 +62,8 @@ export default function LandingPage() {
                 Built for UK Conveyancing Firms
               </div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground tracking-tight leading-tight">
-                Win More Local Clients with{' '}
-                <span className="text-primary">Instant Conveyancing Quotes</span>
+                Win more local clients with{' '}
+                <span className="text-primary">instant conveyancing quotes</span>
               </h1>
               <p className="mt-6 text-lg text-muted-foreground max-w-2xl leading-relaxed">
                 Most firms still make buyers wait. ConveyQuote helps you show transparent prices instantly,
@@ -76,12 +76,6 @@ export default function LandingPage() {
                 >
                   Start Free Trial
                   <ArrowRight className="h-5 w-5" />
-                </Link>
-                <Link
-                  to="/quote/demo"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg border border-border px-8 py-3 text-base font-medium text-foreground hover:bg-accent transition-colors"
-                >
-                  See Demo Quote
                 </Link>
               </div>
               <div className="mt-8 flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
@@ -244,7 +238,7 @@ export default function LandingPage() {
             <div className="rounded-xl border border-border bg-card p-8">
               <h3 className="text-lg font-semibold text-foreground">Free</h3>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-bold text-foreground">$0</span>
+                <span className="text-4xl font-bold text-foreground">£0</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
               <p className="mt-4 text-muted-foreground">Perfect for getting started and testing the platform.</p>
@@ -277,7 +271,7 @@ export default function LandingPage() {
               </div>
               <h3 className="text-lg font-semibold text-foreground">Professional</h3>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-bold text-foreground">$49</span>
+                <span className="text-4xl font-bold text-foreground">£49</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
               <p className="mt-4 text-muted-foreground">Everything you need for a professional conveyancing practice.</p>
