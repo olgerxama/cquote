@@ -158,6 +158,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       let resolvedFirmRole: 'admin' | 'read_only' | null = null
       if (resolvedFirmId) {
+        const activeCheck = await supabase
+          .from('firms')
+          .select('is_active')
+          .eq('id', resolvedFirmId)
+          .maybeSingle()
+
+        if (activeCheck.data?.is_active === false) {
+          setFirmId(null)
+          setFirmRole(null)
+          setNoFirmMessage('This firm account has been deactivated by the platform owner.')
+          localStorage.removeItem('cq_preferred_firm_id')
+          resolvedFirmId = null
+        }
+      }
+
+      if (resolvedFirmId) {
         if (isOwnerForResolvedFirm) {
           resolvedFirmRole = 'admin'
         } else {

@@ -129,7 +129,14 @@ export default function OwnerFirmDetailPage() {
                 <input
                   type="checkbox"
                   checked={firm[key as keyof Firm] as boolean}
-                  onChange={(e) => updateFirm.mutate({ [key]: e.target.checked })}
+                  onChange={(e) => {
+                    const checked = e.target.checked
+                    if (key === 'is_active' && !checked) {
+                      updateFirm.mutate({ is_active: false, public_quote_form_enabled: false })
+                      return
+                    }
+                    updateFirm.mutate({ [key]: checked })
+                  }}
                   className="h-4 w-4 rounded border-input"
                 />
               </label>
