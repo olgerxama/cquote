@@ -174,6 +174,62 @@ export interface DiscountCode {
   updated_at: string;
 }
 
+export type WorkflowInputType = 'text' | 'file' | 'image';
+export type WorkflowStepStatus = 'not_started' | 'in_progress' | 'for_review' | 'needs_info' | 'complete';
+export type WorkflowStatus = 'in_progress' | 'complete';
+
+export interface WorkflowClient {
+  id: string;
+  firm_id: string;
+  auth_user_id: string | null;
+  email: string;
+  full_name: string | null;
+  invited_by_user_id: string | null;
+  invited_at: string | null;
+  accepted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientWorkflow {
+  id: string;
+  firm_id: string;
+  workflow_client_id: string | null;
+  title: string;
+  description: string | null;
+  status: WorkflowStatus;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowStep {
+  id: string;
+  workflow_id: string;
+  title: string;
+  description: string | null;
+  input_type: WorkflowInputType;
+  step_order: number;
+  status: WorkflowStepStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowStepSubmission {
+  id: string;
+  workflow_id: string;
+  step_id: string;
+  submitted_by_user_id: string | null;
+  submitted_by_role: 'firm_admin' | 'client';
+  text_response: string | null;
+  file_path: string | null;
+  file_name: string | null;
+  file_mime_type: string | null;
+  file_size: number | null;
+  note: string | null;
+  created_at: string;
+}
+
 // Form data types
 export interface PurchaseAnswers {
   property_postcode: string;

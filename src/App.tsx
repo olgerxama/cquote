@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { OwnerProtectedRoute } from '@/components/OwnerProtectedRoute'
+import { ClientProtectedRoute } from '@/components/ClientProtectedRoute'
 import LandingPage from '@/pages/LandingPage'
 import PublicQuotePage from '@/pages/PublicQuotePage'
 import InstructPage from '@/pages/InstructPage'
@@ -19,6 +20,10 @@ import LeadsPage from '@/pages/admin/LeadsPage'
 import InstructionsPage from '@/pages/admin/InstructionsPage'
 import PricingPage from '@/pages/admin/PricingPage'
 import SettingsPage from '@/pages/admin/SettingsPage'
+import ClientWorkflowsPage from '@/pages/admin/ClientWorkflowsPage'
+import ClientLoginPage from '@/pages/client/ClientLoginPage'
+import ClientAcceptInvitePage from '@/pages/client/ClientAcceptInvitePage'
+import ClientWorkflowsHomePage from '@/pages/client/ClientWorkflowsHomePage'
 import OwnerLayout from '@/pages/owner/OwnerLayout'
 import OwnerFirmsPage from '@/pages/owner/OwnerFirmsPage'
 import OwnerFirmDetailPage from '@/pages/owner/OwnerFirmDetailPage'
@@ -45,6 +50,8 @@ export default function App() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/admin/no-access" element={<NoFirmAccessPage />} />
       <Route path="/admin/onboarding" element={<OnboardingPage />} />
+      <Route path="/client/login" element={<ClientLoginPage />} />
+      <Route path="/client/accept-invite" element={<ClientAcceptInvitePage />} />
 
       {/* Protected admin routes */}
       <Route element={<ProtectedRoute />}>
@@ -54,7 +61,12 @@ export default function App() {
           <Route path="/admin/instructions" element={<InstructionsPage />} />
           <Route path="/admin/pricing" element={<PricingPage />} />
           <Route path="/admin/settings" element={<SettingsPage />} />
+          <Route path="/admin/workflows" element={<ClientWorkflowsPage />} />
         </Route>
+      </Route>
+
+      <Route element={<ClientProtectedRoute />}>
+        <Route path="/client/workflows" element={<ClientWorkflowsHomePage />} />
       </Route>
 
       {/* Owner routes */}
