@@ -265,10 +265,10 @@ export default function PublicQuotePage() {
       setReferenceCode(data?.referenceCode || null)
       setSubmitted(true)
 
-      // Fire email notification via edge function (fire-and-forget), but only
-      // for Professional firms that have explicitly enabled auto-send.
-      const shouldAutoSendQuoteEmails = hasProPlanAccess && !!firm.auto_send_quote_emails
-      if (data?.id && shouldAutoSendQuoteEmails) {
+      // Fire email notifications via edge function (fire-and-forget).
+      // The function always notifies the firm, and conditionally sends the
+      // customer quote email when auto-send is enabled.
+      if (data?.id) {
         supabase.functions.invoke('create-public-leads', {
           body: { notifyLeadId: data.id, firmId: firm.id },
         }).then(({ error: fnErr }) => {
