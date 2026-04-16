@@ -24,8 +24,10 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-2">
-              <Scale className="h-7 w-7 text-primary" />
-              <span className="text-xl font-bold text-foreground">ConveyQuote</span>
+              <Link to="/" className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity">
+                <Scale className="h-7 w-7 text-primary" />
+                <span className="text-xl font-bold text-foreground">ConveyQuote</span>
+              </Link>
             </div>
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
@@ -355,6 +357,10 @@ export default function LandingPage() {
             <div className="flex items-center gap-2">
               <Scale className="h-5 w-5 text-primary" />
               <span className="font-semibold text-foreground">ConveyQuote</span>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <Link to="/terms" className="text-muted-foreground hover:text-foreground transition-colors">Terms of Service</Link>
+              <Link to="/privacy" className="text-muted-foreground hover:text-foreground transition-colors">Privacy Policy</Link>
             </div>
             <p className="text-sm text-muted-foreground">
               &copy; {new Date().getFullYear()} ConveyQuote. All rights reserved.
