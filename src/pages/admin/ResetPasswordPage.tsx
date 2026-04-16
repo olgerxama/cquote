@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Scale } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/client'
@@ -7,22 +7,34 @@ import { toast } from 'sonner'
 export default function ResetPasswordPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const flow = searchParams.get('flow')
-  const initialEmail = searchParams.get('email') || ''
-  const isSignupFlow = flow === 'signup'
-  const [email, setEmail] = useState(initialEmail)
+  const [email, setEmail] = useState(searchParams.get('email') || '')
   const [otpCode, setOtpCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [step, setStep] = useState<'request' | 'verify' | 'setPassword'>('request')
   const [loading, setLoading] = useState(false)
 
-  async function handleSendOtp(e: React.FormEvent) {
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setStep('setPassword')
+      }
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || !!session) {
+        setStep('setPassword')
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function handleRequestReset(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: isSignupFlow },
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/admin/reset-password`,
     })
     setLoading(false)
     if (error) {
@@ -30,7 +42,7 @@ export default function ResetPasswordPage() {
       return
     }
     setStep('verify')
-    toast.success(isSignupFlow ? 'Signup OTP sent' : 'Password reset OTP sent')
+    toast.success('Password reset email sent. Check your inbox.')
   }
 
   async function handleVerifyOtp(e: React.FormEvent) {
@@ -39,7 +51,7 @@ export default function ResetPasswordPage() {
     const { error } = await supabase.auth.verifyOtp({
       email,
       token: otpCode.trim(),
-      type: 'email',
+      type: 'recovery',
     })
     setLoading(false)
     if (error) {
@@ -69,12 +81,6 @@ export default function ResetPasswordPage() {
       return
     }
 
-    if (isSignupFlow) {
-      toast.success('Password set. Let’s finish your onboarding.')
-      navigate('/admin/onboarding')
-      return
-    }
-
     toast.success('Password updated. You can now sign in.')
     navigate('/admin/login')
   }
@@ -88,14 +94,19 @@ export default function ResetPasswordPage() {
             <span className="text-2xl font-bold text-foreground">ConveyQuote</span>
           </Link>
           <p className="mt-2 text-muted-foreground">
-            {isSignupFlow ? 'Verify your email with OTP, then set your password.' : 'Reset password using email OTP'}
+            {step === 'request'
+              ? 'Request a password reset email.'
+              : step === 'verify'
+                ? 'Enter the OTP code from your email.'
+                : 'Set your new password.'}
           </p>
         </div>
 
         <form
-          onSubmit={step === 'request' ? handleSendOtp : step === 'verify' ? handleVerifyOtp : handleSetPassword}
+          onSubmit={step === 'request' ? handleRequestReset : step === 'verify' ? handleVerifyOtp : handleSetPassword}
           className="bg-card rounded-xl border border-border p-8 shadow-sm space-y-4"
         >
+          {(step === 'request' || step === 'verify') && (
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">Email</label>
             <input
@@ -109,6 +120,7 @@ export default function ResetPasswordPage() {
               disabled={step !== 'request'}
             />
           </div>
+          )}
 
           {step === 'verify' && (
             <div>
@@ -119,7 +131,7 @@ export default function ResetPasswordPage() {
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value)}
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Enter 6-digit code"
+                placeholder="Enter OTP code"
               />
             </div>
           )}
@@ -162,24 +174,15 @@ export default function ResetPasswordPage() {
             {loading
               ? 'Please wait...'
               : step === 'request'
-                ? 'Send OTP'
+                ? 'Send reset email'
                 : step === 'verify'
                   ? 'Verify code'
                   : 'Set new password'}
           </button>
 
           <p className="text-center text-sm text-muted-foreground">
-            {isSignupFlow ? (
-              <>
-                Need a different email?{' '}
-                <Link to="/admin/signup" className="text-primary hover:underline font-medium">Start signup again</Link>
-              </>
-            ) : (
-              <>
-                Back to{' '}
-                <Link to="/admin/login" className="text-primary hover:underline font-medium">Sign in</Link>
-              </>
-            )}
+            Back to{' '}
+            <Link to="/admin/login" className="text-primary hover:underline font-medium">Sign in</Link>
           </p>
         </form>
       </div>

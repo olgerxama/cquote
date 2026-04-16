@@ -10,6 +10,7 @@ interface AuthContextType {
   firmRole: 'admin' | 'read_only' | null
   noFirmMessage: string | null
   isPlatformOwner: boolean
+  refreshUserContext: () => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextType>({
   firmRole: null,
   noFirmMessage: null,
   isPlatformOwner: false,
+  refreshUserContext: async () => {},
   signOut: async () => {},
 })
 
@@ -219,8 +221,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsPlatformOwner(false)
   }
 
+  async function refreshUserContext() {
+    if (!user) return
+    setLoading(true)
+    await resolveUserContext(user.id, user.user_metadata || {})
+  }
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, firmId, firmRole, noFirmMessage, isPlatformOwner, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, firmId, firmRole, noFirmMessage, isPlatformOwner, refreshUserContext, signOut }}>
       {children}
     </AuthContext.Provider>
   )

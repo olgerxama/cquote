@@ -1,16 +1,40 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Scale } from 'lucide-react'
+import { supabase } from '@/integrations/supabase/client'
 import { toast } from 'sonner'
 
 export default function SignupPage() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
-    toast.success('Continue to verification to create your account.')
-    navigate(`/admin/reset-password?email=${encodeURIComponent(email)}&flow=signup`)
+    if (loading) return
+    setLoading(true)
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: `${window.location.origin}/admin/onboarding`,
+      },
+    })
+    setLoading(false)
+
+    if (error) {
+      if (error.message.toLowerCase().includes('security purposes')) {
+        toast.success('Magic link already requested. Please check your inbox (and spam folder).')
+        navigate('/admin/login')
+        return
+      }
+      toast.error(error.message)
+      return
+    }
+
+    toast.success('Magic link sent. Check your email to finish signup.')
+    navigate('/admin/login')
   }
 
   return (
@@ -38,9 +62,10 @@ export default function SignupPage() {
           </div>
           <button
             type="submit"
+            disabled={loading}
             className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            Continue
+            {loading ? 'Sending...' : 'Continue'}
           </button>
           <p className="text-center text-sm text-muted-foreground">
             Already have an account?{' '}

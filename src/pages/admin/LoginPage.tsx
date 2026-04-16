@@ -33,6 +33,12 @@ export default function LoginPage() {
           <p className="mt-2 text-muted-foreground">Sign in to your dashboard</p>
         </div>
         <form onSubmit={handleLogin} className="bg-card rounded-xl border border-border p-8 shadow-sm space-y-4">
+          <Link
+            to="/"
+            className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Back
+          </Link>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">Email</label>
             <input

@@ -4,6 +4,8 @@ import { OwnerProtectedRoute } from '@/components/OwnerProtectedRoute'
 import LandingPage from '@/pages/LandingPage'
 import PublicQuotePage from '@/pages/PublicQuotePage'
 import InstructPage from '@/pages/InstructPage'
+import TermsPage from '@/pages/TermsPage'
+import PrivacyPage from '@/pages/PrivacyPage'
 import NotFound from '@/pages/NotFound'
 import LoginPage from '@/pages/admin/LoginPage'
 import SignupPage from '@/pages/admin/SignupPage'
@@ -32,6 +34,8 @@ export default function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/quote/:firmSlug" element={<PublicQuotePage />} />
       <Route path="/quote/:firmSlug/instruct" element={<InstructPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
 
       {/* Auth routes */}
       <Route path="/admin/login" element={<LoginPage />} />
