@@ -122,6 +122,12 @@ function getBaseUrl(): string {
   return Deno.env.get('APP_BASE_URL') || 'http://localhost:5173'
 }
 
+function hasProfessionalAccessForFirm(firm: Record<string, unknown>): boolean {
+  const planType = String(firm.plan_type || '').toLowerCase()
+  const subscriptionStatus = String(firm.stripe_subscription_status || '').toLowerCase()
+  return planType === 'professional' && ['active', 'trialing'].includes(subscriptionStatus)
+}
+
 function normalizeMoney(value: number): number {
   return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
 }
@@ -715,6 +721,10 @@ Deno.serve(async (req) => {
         })
       }
 
+      const shouldAutoSendQuoteEmails =
+        hasProfessionalAccessForFirm(notifyFirm as Record<string, unknown>) &&
+        Boolean(notifyFirm.auto_send_quote_emails)
+
       // Load quote + items if they exist
       const { data: existingQuote } = await supabase
         .from('quotes')
@@ -765,86 +775,94 @@ Deno.serve(async (req) => {
         emailTasks.push({ task: 'firm_notification', ok: false, error: String(err) })
       }
 
-      // Customer thank-you with PDF
-      try {
-        const baseUrl = getBaseUrl()
-        const instructionLink =
-          existingLead.status !== 'review' && notifyTotals
-            ? `${baseUrl}/quote/${notifyFirm.slug}/instruct?ref=${notifyRef}`
-            : undefined
+      // Customer thank-you with PDF (auto-send gated)
+      if (shouldAutoSendQuoteEmails) {
+        try {
+          const baseUrl = getBaseUrl()
+          const instructionLink =
+            existingLead.status !== 'review' && notifyTotals
+              ? `${baseUrl}/quote/${notifyFirm.slug}/instruct?ref=${notifyRef}`
+              : undefined
 
-        let attachments: EmailAttachment[] | undefined
-        if (notifyTotals && existingItems.length > 0) {
-          try {
-            const pdfHtml = customerThankYouHtml({
+          let attachments: EmailAttachment[] | undefined
+          if (notifyTotals && existingItems.length > 0) {
+            try {
+              const pdfHtml = customerThankYouHtml({
+                firmName: notifyFirm.name,
+                leadName: existingLead.full_name,
+                leadEmail: existingLead.email,
+                serviceType: existingLead.service_type,
+                propertyValue: existingLead.property_value ? Number(existingLead.property_value) : undefined,
+                propertyAddress: String(existingLead.property_postcode || ''),
+                referenceCode: existingQuote?.reference_code || undefined,
+                items: existingItems as { description: string; amount: number; is_vatable?: boolean }[],
+                subtotal: notifyTotals ? Number(notifyTotals.subtotal || 0) : undefined,
+                vatTotal: notifyTotals ? Number(notifyTotals.vatTotal || 0) : undefined,
+                grandTotal: notifyTotals?.grandTotal != null ? Number(notifyTotals.grandTotal) : undefined,
+                instructionLink: undefined,
+                hasPdf: false,
+                includeIntro: false,
+                compactHeader: true,
+              })
+              const pdfBase64 = (await renderPdfFromHtmlBase64(pdfHtml)) || await generateQuotePdfBase64({
+                firmName: notifyFirm.name,
+                leadName: existingLead.full_name,
+                leadEmail: existingLead.email,
+                serviceType: existingLead.service_type,
+                propertyValue: existingLead.property_value ? Number(existingLead.property_value) : undefined,
+                referenceCode: existingQuote?.reference_code || undefined,
+                items: existingItems as { description: string; amount: number; is_vatable?: boolean }[],
+                subtotal: Number(notifyTotals.subtotal || 0),
+                vatTotal: Number(notifyTotals.vatTotal || 0),
+                grandTotal: Number(notifyTotals.grandTotal || 0),
+              })
+              attachments = [{ filename: `quote-${notifyRef}.pdf`, content: pdfBase64 }]
+            } catch (pdfErr) {
+              console.error('PDF generation failed:', pdfErr)
+            }
+          }
+
+          const result = await sendEmail({
+            to: existingLead.email,
+            from: notifyFirm.reply_to_email || fromEmail,
+            fromName: notifyFirm.sender_display_name || notifyFirm.name,
+            subject: `Thank you — your quote from ${notifyFirm.name}`,
+            html: customerThankYouHtml({
               firmName: notifyFirm.name,
               leadName: existingLead.full_name,
               leadEmail: existingLead.email,
               serviceType: existingLead.service_type,
-              propertyValue: existingLead.property_value ? Number(existingLead.property_value) : undefined,
+              propertyValue: Number(existingLead.property_value || 0),
               propertyAddress: String(existingLead.property_postcode || ''),
               referenceCode: existingQuote?.reference_code || undefined,
-              items: existingItems as { description: string; amount: number; is_vatable?: boolean }[],
+              items: existingItems.length > 0
+                ? (existingItems as { description: string; amount: number; is_vatable?: boolean }[])
+                : undefined,
               subtotal: notifyTotals ? Number(notifyTotals.subtotal || 0) : undefined,
               vatTotal: notifyTotals ? Number(notifyTotals.vatTotal || 0) : undefined,
               grandTotal: notifyTotals?.grandTotal != null ? Number(notifyTotals.grandTotal) : undefined,
-              instructionLink: undefined,
-              hasPdf: false,
-              includeIntro: false,
-              compactHeader: true,
-            })
-            const pdfBase64 = (await renderPdfFromHtmlBase64(pdfHtml)) || await generateQuotePdfBase64({
-              firmName: notifyFirm.name,
-              leadName: existingLead.full_name,
-              leadEmail: existingLead.email,
-              serviceType: existingLead.service_type,
-              propertyValue: existingLead.property_value ? Number(existingLead.property_value) : undefined,
-              referenceCode: existingQuote?.reference_code || undefined,
-              items: existingItems as { description: string; amount: number; is_vatable?: boolean }[],
-              subtotal: Number(notifyTotals.subtotal || 0),
-              vatTotal: Number(notifyTotals.vatTotal || 0),
-              grandTotal: Number(notifyTotals.grandTotal || 0),
-            })
-            attachments = [{ filename: `quote-${notifyRef}.pdf`, content: pdfBase64 }]
-          } catch (pdfErr) {
-            console.error('PDF generation failed:', pdfErr)
+              instructionLink,
+              hasPdf: !!attachments,
+            }),
+            attachments,
+          })
+          emailTasks.push({ task: 'customer_thank_you', ...result })
+
+          if (existingQuote && result.ok) {
+            await supabase
+              .from('quotes')
+              .update({ status: 'sent', sent_at: new Date().toISOString() })
+              .eq('id', existingQuote.id)
           }
+        } catch (err) {
+          emailTasks.push({ task: 'customer_thank_you', ok: false, error: String(err) })
         }
-
-        const result = await sendEmail({
-          to: existingLead.email,
-          from: notifyFirm.reply_to_email || fromEmail,
-          fromName: notifyFirm.sender_display_name || notifyFirm.name,
-          subject: `Thank you — your quote from ${notifyFirm.name}`,
-          html: customerThankYouHtml({
-            firmName: notifyFirm.name,
-            leadName: existingLead.full_name,
-            leadEmail: existingLead.email,
-            serviceType: existingLead.service_type,
-            propertyValue: Number(existingLead.property_value || 0),
-            propertyAddress: String(existingLead.property_postcode || ''),
-            referenceCode: existingQuote?.reference_code || undefined,
-            items: existingItems.length > 0
-              ? (existingItems as { description: string; amount: number; is_vatable?: boolean }[])
-              : undefined,
-            subtotal: notifyTotals ? Number(notifyTotals.subtotal || 0) : undefined,
-            vatTotal: notifyTotals ? Number(notifyTotals.vatTotal || 0) : undefined,
-            grandTotal: notifyTotals?.grandTotal != null ? Number(notifyTotals.grandTotal) : undefined,
-            instructionLink,
-            hasPdf: !!attachments,
-          }),
-          attachments,
+      } else {
+        emailTasks.push({
+          task: 'customer_thank_you',
+          ok: true,
+          error: 'skipped: auto-send disabled or professional access unavailable',
         })
-        emailTasks.push({ task: 'customer_thank_you', ...result })
-
-        if (existingQuote && result.ok) {
-          await supabase
-            .from('quotes')
-            .update({ status: 'sent', sent_at: new Date().toISOString() })
-            .eq('id', existingQuote.id)
-        }
-      } catch (err) {
-        emailTasks.push({ task: 'customer_thank_you', ok: false, error: String(err) })
       }
 
       return new Response(

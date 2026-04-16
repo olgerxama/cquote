@@ -23,6 +23,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ArrowUpDown,
   Send,
   Save,
   Zap,
@@ -48,6 +49,7 @@ export default function LeadsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [dateSortOrder, setDateSortOrder] = useState<'latest' | 'earliest'>('latest')
   const [page, setPage] = useState(0)
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -108,16 +110,26 @@ export default function LeadsPage() {
     })
   }, [leads, searchTerm])
 
-  const totalCount = filteredLeads.length
+  const sortedLeads = useMemo(() => {
+    const copy = [...filteredLeads]
+    copy.sort((a, b) => {
+      const aTime = new Date(a.created_at).getTime()
+      const bTime = new Date(b.created_at).getTime()
+      return dateSortOrder === 'latest' ? bTime - aTime : aTime - bTime
+    })
+    return copy
+  }, [filteredLeads, dateSortOrder])
+
+  const totalCount = sortedLeads.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
   const pagedLeads = useMemo(
-    () => filteredLeads.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-    [filteredLeads, page]
+    () => sortedLeads.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [sortedLeads, page]
   )
 
   const selectedLead = useMemo(
-    () => filteredLeads.find((l) => l.id === selectedLeadId) ?? null,
-    [filteredLeads, selectedLeadId]
+    () => sortedLeads.find((l) => l.id === selectedLeadId) ?? null,
+    [sortedLeads, selectedLeadId]
   )
 
   return (
@@ -223,7 +235,23 @@ export default function LeadsPage() {
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Service</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Value</th>
                   <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Status</th>
-                  <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase hidden md:table-cell">Date</th>
+                  <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase hidden md:table-cell">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDateSortOrder((prev) => (prev === 'latest' ? 'earliest' : 'latest'))
+                        setPage(0)
+                      }}
+                      className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                      title={`Sort by ${dateSortOrder === 'latest' ? 'earliest' : 'latest'}`}
+                    >
+                      Date
+                      <ArrowUpDown className="h-3.5 w-3.5" />
+                      <span className="text-[10px] normal-case text-muted-foreground">
+                        {dateSortOrder === 'latest' ? 'latest' : 'earliest'}
+                      </span>
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
