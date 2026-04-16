@@ -119,11 +119,12 @@ export default function LandingPage() {
               <h2 className="mt-3 text-3xl sm:text-4xl font-bold text-foreground">Built from a real client frustration</h2>
               <p className="mt-5 text-lg text-muted-foreground leading-relaxed">
                 I visited more than 20 conveyancing firm websites while trying to choose a solicitor. Only two
-                gave an instant quote. Most required contact forms, phone calls, and waiting for follow-up.
+                provided an instant quote. Most required contact forms, phone calls, and waiting for follow-up.
               </p>
               <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-                ConveyQuote was built to fix that gap: help local firms show transparent pricing immediately,
-                so buyers stay on your website instead of moving to comparison sites.
+                ConveyQuote was built to solve that gap — helping firms present transparent pricing instantly.
+                If potential clients can’t understand your pricing quickly, they move on to the next firm.
+                We help firms capture that demand before it’s lost.
               </p>
             </div>
           </div>
