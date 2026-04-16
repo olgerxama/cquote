@@ -314,6 +314,7 @@ export default function PublicQuotePage() {
   if (submitted && quoteResult) {
     const serviceLabel = form.serviceType.replace(/_/g, ' & ').replace(/\b\w/g, c => c.toUpperCase())
     const isManualReview = quoteResult.noMatchFallback || !hasProPlanAccess || !firm.show_instant_quote
+    const willAutoSendQuoteEmail = hasProPlanAccess && !!firm.auto_send_quote_emails
     const showEstimateDocument = hasProPlanAccess && !!firm.show_estimate_document
 
     return (
@@ -338,7 +339,9 @@ export default function PublicQuotePage() {
               <p className="text-green-700 text-xs mt-0.5">
                 {isManualReview
                   ? 'We will review your details and be in touch shortly.'
-                  : 'A copy has been sent to your email. A member of our team will be in touch soon.'}
+                  : willAutoSendQuoteEmail
+                    ? 'A copy has been sent to your email. A member of our team will be in touch soon.'
+                    : 'Your quote is shown below. A member of our team will be in touch soon.'}
               </p>
             </div>
           </div>

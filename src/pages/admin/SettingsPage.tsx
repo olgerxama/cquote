@@ -313,14 +313,6 @@ export default function SettingsPage() {
               locked={!isProAccess}
             />
             <Toggle
-              label="Show estimate document"
-              description="Show a detailed PDF-style estimate document on completion."
-              checked={isProAccess ? !!form.show_estimate_document : false}
-              onChange={(v) => update('show_estimate_document', withPremiumGuard(v, !!form.show_estimate_document))}
-              premiumOnly
-              locked={!isProAccess}
-            />
-            <Toggle
               label="Require admin review"
               description="All leads will be placed in review instead of auto-sending quotes."
               checked={!!form.require_admin_review}
