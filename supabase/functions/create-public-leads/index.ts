@@ -122,6 +122,12 @@ function getBaseUrl(): string {
   return Deno.env.get('APP_BASE_URL') || 'http://localhost:5173'
 }
 
+function hasProfessionalAccessForFirm(firm: Record<string, unknown>): boolean {
+  const planType = String(firm.plan_type || '').toLowerCase()
+  const subscriptionStatus = String(firm.stripe_subscription_status || '').toLowerCase()
+  return planType === 'professional' && ['active', 'trialing'].includes(subscriptionStatus)
+}
+
 function normalizeMoney(value: number): number {
   return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
 }
@@ -713,6 +719,22 @@ Deno.serve(async (req) => {
           status: 404,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
+      }
+
+      const shouldAutoSendQuoteEmails =
+        hasProfessionalAccessForFirm(notifyFirm as Record<string, unknown>) &&
+        Boolean(notifyFirm.auto_send_quote_emails)
+      if (!shouldAutoSendQuoteEmails) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            mode: 'notify',
+            leadId: notifyLeadId,
+            skipped: true,
+            reason: 'auto-send disabled or professional access unavailable',
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
       }
 
       // Load quote + items if they exist

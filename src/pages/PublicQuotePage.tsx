@@ -8,6 +8,7 @@ import PurchaseSection from '@/components/quote/PurchaseSection'
 import SaleSection from '@/components/quote/SaleSection'
 import RemortgageSection from '@/components/quote/RemortgageSection'
 import AdditionalInfoSection from '@/components/quote/AdditionalInfoSection'
+import EstimateDocument from '@/components/quote/EstimateDocument'
 import { formatCurrency } from '@/lib/utils'
 import { hasProfessionalAccess } from '@/lib/billing'
 import { toast } from 'sonner'
@@ -264,10 +265,10 @@ export default function PublicQuotePage() {
       setReferenceCode(data?.referenceCode || null)
       setSubmitted(true)
 
-      // Fire email notification via edge function (fire-and-forget).
-      // The RPC only creates data — emails are sent by the edge function.
-      // This is non-blocking: if it fails, the lead is already saved.
-      if (data?.id) {
+      // Fire email notification via edge function (fire-and-forget), but only
+      // for Professional firms that have explicitly enabled auto-send.
+      const shouldAutoSendQuoteEmails = hasProPlanAccess && !!firm.auto_send_quote_emails
+      if (data?.id && shouldAutoSendQuoteEmails) {
         supabase.functions.invoke('create-public-leads', {
           body: { notifyLeadId: data.id, firmId: firm.id },
         }).then(({ error: fnErr }) => {
@@ -313,6 +314,7 @@ export default function PublicQuotePage() {
   if (submitted && quoteResult) {
     const serviceLabel = form.serviceType.replace(/_/g, ' & ').replace(/\b\w/g, c => c.toUpperCase())
     const isManualReview = quoteResult.noMatchFallback || !hasProPlanAccess || !firm.show_instant_quote
+    const showEstimateDocument = hasProPlanAccess && !!firm.show_estimate_document
 
     return (
       <div className={`bg-muted/30 ${isEmbed ? 'p-4' : 'min-h-screen py-8 px-4'}`}>
@@ -349,8 +351,17 @@ export default function PublicQuotePage() {
                 Your enquiry requires a manual review. We&apos;ll prepare a personalised quote and contact you shortly.
               </p>
             </div>
+          ) : showEstimateDocument ? (
+            <EstimateDocument
+              firmName={firm.name}
+              leadName={`${form.contact.first_name} ${form.contact.surname}`.trim()}
+              referenceCode={referenceCode || undefined}
+              serviceType={serviceLabel}
+              items={quoteResult.breakdown.items}
+              totals={quoteResult.breakdown}
+              documentType="estimate"
+            />
           ) : (
-            /* Invoice-style document */
             <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
               {/* Header band */}
               <div className="px-8 py-6" style={{ background: primaryColor }}>
