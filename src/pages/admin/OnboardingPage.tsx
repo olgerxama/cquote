@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { generateSlug } from '@/lib/utils'
 
 export default function OnboardingPage() {
-  const { user } = useAuth()
+  const { user, refreshUserContext } = useAuth()
   const navigate = useNavigate()
   const [firmName, setFirmName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -33,6 +33,7 @@ export default function OnboardingPage() {
           .maybeSingle()
 
         if (existingLink?.firm_id) {
+          await refreshUserContext()
           if (!cancelled) navigate('/admin', { replace: true })
           return
         }
@@ -47,6 +48,7 @@ export default function OnboardingPage() {
           await supabase
             .from('firm_users')
             .insert({ user_id: user.id, firm_id: ownedFirm.id, role: 'admin' })
+          await refreshUserContext()
           if (!cancelled) navigate('/admin', { replace: true })
           return
         }
@@ -60,7 +62,7 @@ export default function OnboardingPage() {
     return () => {
       cancelled = true
     }
-  }, [user, navigate])
+  }, [user, navigate, refreshUserContext])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -86,6 +88,7 @@ export default function OnboardingPage() {
         .maybeSingle()
 
       if (existingLink?.firm_id) {
+        await refreshUserContext()
         navigate('/admin', { replace: true })
         return
       }
@@ -105,6 +108,7 @@ export default function OnboardingPage() {
           setError(repairError.message)
           return
         }
+        await refreshUserContext()
         navigate('/admin', { replace: true })
         return
       }
@@ -134,6 +138,7 @@ export default function OnboardingPage() {
         return
       }
 
+      await refreshUserContext()
       navigate('/admin', { replace: true })
     } finally {
       setLoading(false)
