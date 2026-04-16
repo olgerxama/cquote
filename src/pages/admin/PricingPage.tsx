@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { hasProfessionalAccess } from '@/lib/billing'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Plus, Trash2, Pencil, X } from 'lucide-react'
@@ -35,6 +36,51 @@ export default function PricingPage() {
   const canManage = firmRole === 'admin' || isPlatformOwner
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('bands')
+  const { data: firm } = useQuery({
+    queryKey: ['firm-plan', firmId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('firms')
+        .select('plan_type, stripe_subscription_status')
+        .eq('id', firmId!)
+        .maybeSingle()
+      if (error) throw error
+      return data
+    },
+    enabled: !!firmId,
+  })
+  const discountCodesEnabled = !!firm && hasProfessionalAccess(firm)
+
+  useEffect(() => {
+    if (tab === 'codes' && !discountCodesEnabled) {
+      setTab('bands')
+    }
+  }, [tab, discountCodesEnabled])
+
+  useEffect(() => {
+    if (!firmId || discountCodesEnabled || !canManage) return
+
+    let cancelled = false
+    ;(async () => {
+      const { error } = await supabase
+        .from('discount_codes')
+        .update({ is_active: false })
+        .eq('firm_id', firmId)
+        .eq('is_active', true)
+
+      if (!cancelled) {
+        if (error) {
+          toast.error(`Could not disable discount codes: ${error.message}`)
+        } else {
+          queryClient.invalidateQueries({ queryKey: ['discount-codes', firmId] })
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [firmId, discountCodesEnabled, canManage, queryClient])
 
   return (
     <div>
@@ -46,25 +92,36 @@ export default function PricingPage() {
             You have read-only access. Pricing changes are disabled for your account.
           </p>
         )}
+        {!discountCodesEnabled && (
+          <p className="mt-2 text-sm text-amber-700">
+            Discount codes are a Professional-plan feature. Existing discount codes are set inactive on Free plans.
+          </p>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-border mb-6">
         {(['bands', 'extras', 'codes'] as Tab[]).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              if (t === 'codes' && !discountCodesEnabled) return
+              setTab(t)
+            }}
+            disabled={t === 'codes' && !discountCodesEnabled}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+            } ${
+              t === 'codes' && !discountCodesEnabled ? 'cursor-not-allowed opacity-50 hover:text-muted-foreground' : ''
             }`}
           >
-            {t === 'bands' ? 'Fee Bands' : t === 'extras' ? 'Extras' : 'Discount Codes'}
+            {t === 'bands' ? 'Fee Bands' : t === 'extras' ? 'Extras' : `Discount Codes${discountCodesEnabled ? '' : ' (Pro)'}`}
           </button>
         ))}
       </div>
 
       {tab === 'bands' && <BandsTab firmId={firmId!} queryClient={queryClient} canManage={canManage} />}
       {tab === 'extras' && <ExtrasTab firmId={firmId!} queryClient={queryClient} canManage={canManage} />}
-      {tab === 'codes' && <CodesTab firmId={firmId!} queryClient={queryClient} canManage={canManage} />}
+      {tab === 'codes' && <CodesTab firmId={firmId!} queryClient={queryClient} canManage={canManage} discountCodesEnabled={discountCodesEnabled} />}
     </div>
   )
 }
@@ -424,7 +481,17 @@ function ExtrasTab({ firmId, queryClient, canManage }: { firmId: string; queryCl
   )
 }
 
-function CodesTab({ firmId, queryClient, canManage }: { firmId: string; queryClient: ReturnType<typeof useQueryClient>; canManage: boolean }) {
+function CodesTab({
+  firmId,
+  queryClient,
+  canManage,
+  discountCodesEnabled,
+}: {
+  firmId: string
+  queryClient: ReturnType<typeof useQueryClient>
+  canManage: boolean
+  discountCodesEnabled: boolean
+}) {
   const [showDialog, setShowDialog] = useState(false)
   const [editing, setEditing] = useState<DiscountCode | null>(null)
   const [form, setForm] = useState({
@@ -444,6 +511,7 @@ function CodesTab({ firmId, queryClient, canManage }: { firmId: string; queryCli
 
   const save = useMutation({
     mutationFn: async () => {
+      if (!discountCodesEnabled) throw new Error('Discount codes are available on the Professional plan only.')
       if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
       const payload = {
         code: form.code.toUpperCase(),
@@ -474,6 +542,7 @@ function CodesTab({ firmId, queryClient, canManage }: { firmId: string; queryCli
 
   const del = useMutation({
     mutationFn: async (id: string) => {
+      if (!discountCodesEnabled) throw new Error('Discount codes are available on the Professional plan only.')
       if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
       const { error } = await supabase.from('discount_codes').delete().eq('id', id)
       if (error) throw error
@@ -508,7 +577,7 @@ function CodesTab({ firmId, queryClient, canManage }: { firmId: string; queryCli
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <button disabled={!canManage} onClick={openNew} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+        <button disabled={!canManage || !discountCodesEnabled} onClick={openNew} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
           <Plus className="h-4 w-4" /> Add Code
         </button>
       </div>
@@ -540,7 +609,7 @@ function CodesTab({ firmId, queryClient, canManage }: { firmId: string; queryCli
                   <span className={`inline-flex h-2 w-2 rounded-full ${c.is_active ? 'bg-green-500' : 'bg-muted'}`} />
                 </td>
                 <td className="px-5 py-3 text-right">
-                  {canManage && (
+                  {canManage && discountCodesEnabled && (
                     <>
                       <button onClick={() => openEdit(c)} className="text-muted-foreground hover:text-foreground mr-2"><Pencil className="h-4 w-4" /></button>
                       <button onClick={() => del.mutate(c.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
@@ -553,7 +622,7 @@ function CodesTab({ firmId, queryClient, canManage }: { firmId: string; queryCli
         </table>
       </div>
 
-      {showDialog && canManage && (
+      {showDialog && canManage && discountCodesEnabled && (
         <Dialog title={editing ? 'Edit Code' : 'Add Code'} onClose={() => setShowDialog(false)}>
           <div className="space-y-4">
             <Field label="Code">
