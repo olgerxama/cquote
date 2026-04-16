@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Scale,
   FileText,
@@ -15,8 +16,35 @@ import {
   PhoneCall,
   Clock3,
 } from 'lucide-react'
+import { supabase } from '@/integrations/supabase/client'
+import { toast } from 'sonner'
 
 export default function LandingPage() {
+  const navigate = useNavigate()
+  const [demoLoading, setDemoLoading] = useState(false)
+
+  async function handleViewDemo() {
+    if (demoLoading) return
+    setDemoLoading(true)
+    const demoEmail = 'demo@conveyquoteapp.com'
+    const demoPassword = 'demo@conveyquoteapp.com'
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: demoEmail,
+      password: demoPassword,
+    })
+    setDemoLoading(false)
+
+    if (error) {
+      toast.error('Demo login is currently unavailable. Please try again shortly.')
+      navigate('/admin/login')
+      return
+    }
+
+    toast.success('Welcome to the demo account.')
+    navigate('/admin')
+  }
+
   return (
     <div className="min-h-screen bg-white">
       {/* Navigation */}
@@ -83,6 +111,13 @@ export default function LandingPage() {
                   Start Free Trial
                   <ArrowRight className="h-5 w-5" />
                 </Link>
+                <button
+                  onClick={handleViewDemo}
+                  disabled={demoLoading}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg border border-border px-8 py-3 text-base font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                >
+                  {demoLoading ? 'Opening demo...' : 'View Demo'}
+                </button>
               </div>
               <div className="mt-8 flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-green-500" /> No credit card required</span>
