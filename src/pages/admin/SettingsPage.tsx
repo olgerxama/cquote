@@ -436,9 +436,12 @@ function FormTab({
   canUsePremium: boolean
 }) {
   const [search, setSearch] = useState('')
+  const [customFieldKey, setCustomFieldKey] = useState('')
+  const [customFieldLabel, setCustomFieldLabel] = useState('')
   const PREMIUM_SECTION_KEYS = new Set<keyof PublicFormConfig>(['show_discount_code', 'show_instruct_button'])
   const hiddenSet = useMemo(() => new Set(config.hidden_fields), [config.hidden_fields])
   const requiredSet = useMemo(() => new Set(config.required_fields || []), [config.required_fields])
+  const customFields = useMemo(() => config.custom_yes_no_fields || [], [config.custom_yes_no_fields])
 
   const filteredFields = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -465,6 +468,31 @@ function FormTab({
 
     onConfigChange('hidden_fields', Array.from(nextHidden))
     onConfigChange('required_fields', Array.from(nextRequired))
+  }
+
+  function addCustomYesNoField() {
+    const key = customFieldKey.trim()
+    const label = customFieldLabel.trim()
+    if (!key || !label) {
+      toast.error('Please provide both a field key and label.')
+      return
+    }
+    if (!/^[a-z0-9_]+$/.test(key)) {
+      toast.error('Field key must use lowercase letters, numbers, and underscores only.')
+      return
+    }
+    if (customFields.some((f) => f.key === key)) {
+      toast.error('That field key already exists.')
+      return
+    }
+
+    onConfigChange('custom_yes_no_fields', [...customFields, { key, label }])
+    setCustomFieldKey('')
+    setCustomFieldLabel('')
+  }
+
+  function removeCustomYesNoField(key: string) {
+    onConfigChange('custom_yes_no_fields', customFields.filter((f) => f.key !== key))
   }
 
   return (
@@ -543,6 +571,53 @@ function FormTab({
               No fields match your search.
             </div>
           )}
+        </div>
+      </Section>
+
+      <Section title="Custom yes/no questions">
+        <p className="text-xs text-muted-foreground -mt-2 mb-3">
+          Add custom yes/no questions to the quote form (for example: shared_ownership). You can then use these keys in pricing extras conditions.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 mb-3">
+          <input
+            value={customFieldKey}
+            onChange={(e) => setCustomFieldKey(e.target.value)}
+            placeholder="field_key (e.g. shared_ownership)"
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+          <input
+            value={customFieldLabel}
+            onChange={(e) => setCustomFieldLabel(e.target.value)}
+            placeholder="Question label (e.g. Shared ownership?)"
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+          <button
+            type="button"
+            onClick={addCustomYesNoField}
+            className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90"
+          >
+            Add question
+          </button>
+        </div>
+        <div className="space-y-2">
+          {customFields.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No custom yes/no questions added yet.</p>
+          ) : customFields.map((field) => (
+            <div key={field.key} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+              <div>
+                <p className="text-sm font-medium text-foreground">{field.label}</p>
+                <p className="text-xs text-muted-foreground">{field.key}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeCustomYesNoField(field.key)}
+                className="p-2 text-destructive hover:bg-destructive/10 rounded-md"
+                title="Remove custom field"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
         </div>
       </Section>
     </>

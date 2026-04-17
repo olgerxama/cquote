@@ -119,6 +119,12 @@ function getBaseUrl(): string {
   return Deno.env.get('APP_BASE_URL') || 'http://localhost:5173'
 }
 
+function hasProfessionalAccessForFirm(firm: Record<string, unknown>): boolean {
+  const planType = String(firm.plan_type || '').toLowerCase()
+  const subscriptionStatus = String(firm.stripe_subscription_status || '').toLowerCase()
+  return planType === 'professional' && ['active', 'trialing'].includes(subscriptionStatus)
+}
+
 function normalizeMoney(value: number): number {
   return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
 }
@@ -517,7 +523,9 @@ Deno.serve(async (req) => {
     const fromEmail = getFromEmail()
     const baseUrl = getBaseUrl()
     const instructionRef = quote.reference_code || leadId
-    const instructionLink = `${baseUrl}/quote/${firm.slug}/instruct?ref=${instructionRef}`
+    const publicFormConfig = (firm.public_form_config ?? {}) as Record<string, unknown>
+    const canShowInstructLink = hasProfessionalAccessForFirm(firm as Record<string, unknown>) && Boolean(publicFormConfig.show_instruct_button)
+    const instructionLink = canShowInstructLink ? `${baseUrl}/quote/${firm.slug}/instruct?ref=${instructionRef}` : undefined
 
     // Generate the PDF server-side unless the caller provided one explicitly.
     let attachments: EmailAttachment[] | undefined

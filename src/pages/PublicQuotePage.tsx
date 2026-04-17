@@ -21,6 +21,7 @@ import type {
   ServiceType,
   PublicFormConfig,
   ManualReviewCondition,
+  CustomYesNoField,
 } from '@/types'
 
 const DEFAULT_CONFIG: PublicFormConfig = {
@@ -33,6 +34,7 @@ const DEFAULT_CONFIG: PublicFormConfig = {
   show_phone_field: true,
   show_discount_code: true,
   show_instruct_button: true,
+  custom_yes_no_fields: [],
   hidden_fields: [],
   required_fields: [],
   instruction_hidden_fields: [],
@@ -60,6 +62,7 @@ export default function PublicQuotePage() {
   const [validatedDiscount, setValidatedDiscount] = useState<DiscountCode | null>(null)
   const [quoteResult, setQuoteResult] = useState<ReturnType<typeof calculateQuoteWithFallback> | null>(null)
   const [referenceCode, setReferenceCode] = useState<string | null>(null)
+  const [customYesNoAnswers, setCustomYesNoAnswers] = useState<Record<string, 'yes' | 'no'>>({})
 
   // Load firm
   const { data: firm, isLoading: firmLoading } = useQuery({
@@ -109,6 +112,14 @@ export default function PublicQuotePage() {
   }, [firm])
   const hasProPlanAccess = useMemo(() => (firm ? hasProfessionalAccess(firm) : false), [firm])
   const canUseDiscountCode = hasProPlanAccess && config.show_discount_code
+  const customYesNoFields = useMemo(() => (config.custom_yes_no_fields || []) as CustomYesNoField[], [config.custom_yes_no_fields])
+
+  useEffect(() => {
+    if (!canUseDiscountCode) {
+      setValidatedDiscount(null)
+      setDiscountInput('')
+    }
+  }, [canUseDiscountCode])
 
   const availableServices = useMemo(() => {
     const services: ServiceType[] = []
@@ -154,7 +165,7 @@ export default function PublicQuotePage() {
     const conditions = (firm.manual_review_conditions ?? []) as ManualReviewCondition[]
     if (conditions.length === 0) return false
 
-    const answers = form.getAnswersJson()
+    const answers = { ...form.getAnswersJson(), ...customYesNoAnswers }
     return conditions.some((c) => {
       const val = String(answers[c.field] ?? '')
       return val.toLowerCase() === c.value.toLowerCase()
@@ -210,7 +221,7 @@ export default function PublicQuotePage() {
 
     const formData = form.getFormData()
     const effectiveDiscount = canUseDiscountCode ? validatedDiscount : null
-    const result = calculateQuoteWithFallback(formData, bands, extras, effectiveDiscount)
+    const result = calculateQuoteWithFallback(formData, bands, extras, effectiveDiscount, customYesNoAnswers)
     const isReview = checkManualReview() || result.noMatchFallback
 
     const leadPayload = {
@@ -227,7 +238,7 @@ export default function PublicQuotePage() {
       first_time_buyer: formData.purchase.is_first_time_buyer === 'yes',
       estimated_total: isReview ? null : result.breakdown.grandTotal,
       status: isReview ? 'review' : 'new',
-      answers: form.getAnswersJson(),
+      answers: { ...form.getAnswersJson(), ...customYesNoAnswers },
       discount_code_id: effectiveDiscount?.id || null,
     }
 
@@ -518,6 +529,27 @@ export default function PublicQuotePage() {
 
           {config.show_additional_info && (
             <AdditionalInfoSection data={form.additional} onChange={form.updateAdditional} hiddenFields={config.hidden_fields} />
+          )}
+
+          {customYesNoFields.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-base font-semibold text-foreground border-b border-border pb-2">Additional Questions</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {customYesNoFields.map((field) => (
+                  <div key={field.key}>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">{field.label}</label>
+                    <select
+                      value={customYesNoAnswers[field.key] || 'no'}
+                      onChange={(e) => setCustomYesNoAnswers((prev) => ({ ...prev, [field.key]: e.target.value as 'yes' | 'no' }))}
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Timeline & Notes */}

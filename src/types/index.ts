@@ -280,10 +280,16 @@ export interface PublicFormConfig {
   show_phone_field: boolean;
   show_discount_code: boolean;
   show_instruct_button: boolean;
+  custom_yes_no_fields?: CustomYesNoField[];
   hidden_fields: string[];
   required_fields: string[];
   instruction_hidden_fields: string[];
   instruction_required_fields: string[];
+}
+
+export interface CustomYesNoField {
+  key: string;
+  label: string;
 }
 
 export const DEFAULT_PUBLIC_FORM_CONFIG: PublicFormConfig = {
@@ -296,6 +302,7 @@ export const DEFAULT_PUBLIC_FORM_CONFIG: PublicFormConfig = {
   show_phone_field: true,
   show_discount_code: true,
   show_instruct_button: true,
+  custom_yes_no_fields: [],
   hidden_fields: [],
   required_fields: [],
   instruction_hidden_fields: [],

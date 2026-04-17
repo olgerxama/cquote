@@ -13,7 +13,7 @@ interface FlatAnswers {
   [key: string]: string | number | boolean | undefined
 }
 
-export function flattenAnswers(formData: QuoteFormData): FlatAnswers {
+export function flattenAnswers(formData: QuoteFormData, extraAnswers?: Record<string, string | number | boolean>): FlatAnswers {
   const flat: FlatAnswers = {}
 
   // Service type
@@ -51,6 +51,12 @@ export function flattenAnswers(formData: QuoteFormData): FlatAnswers {
   // Common
   Object.entries(formData.common).forEach(([k, v]) => { if (v) flat[k] = v })
 
+  if (extraAnswers) {
+    Object.entries(extraAnswers).forEach(([k, v]) => {
+      flat[k] = v
+    })
+  }
+
   return flat
 }
 
@@ -71,8 +77,8 @@ function getApplicableExtras(extras: PricingExtra[], answers: FlatAnswers, servi
     // Service type filter
     if (extra.service_type && extra.service_type !== serviceType) return false
 
-    // Condition check
-    if (!extra.condition_field || !extra.condition_value) return false
+    // Conditionless automatic extras apply to all matching services.
+    if (!extra.condition_field || !extra.condition_value) return true
 
     // Normalize field key: strip section prefixes
     const fieldKey = extra.condition_field.replace(/^(purchase|sale|remortgage|additional|common)\./, '')
@@ -116,9 +122,10 @@ export function calculateQuote(
   formData: QuoteFormData,
   bands: PricingBand[],
   extras: PricingExtra[],
-  discountCode?: DiscountCode | null
+  discountCode?: DiscountCode | null,
+  extraAnswers?: Record<string, string | number | boolean>
 ): QuoteCalculationResult {
-  const answers = flattenAnswers(formData)
+  const answers = flattenAnswers(formData, extraAnswers)
   const items: QuoteLineItem[] = []
   let noMatchFallback = false
   let sortOrder = 0
@@ -233,7 +240,8 @@ export function calculateQuoteWithFallback(
   formData: QuoteFormData,
   bands: PricingBand[],
   extras: PricingExtra[],
-  discountCode?: DiscountCode | null
+  discountCode?: DiscountCode | null,
+  extraAnswers?: Record<string, string | number | boolean>
 ): QuoteCalculationResult {
-  return calculateQuote(formData, bands, extras, discountCode)
+  return calculateQuote(formData, bands, extras, discountCode, extraAnswers)
 }

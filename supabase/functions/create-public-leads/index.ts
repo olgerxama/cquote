@@ -724,6 +724,10 @@ Deno.serve(async (req) => {
       const shouldAutoSendQuoteEmails =
         hasProfessionalAccessForFirm(notifyFirm as Record<string, unknown>) &&
         Boolean(notifyFirm.auto_send_quote_emails)
+      const notifyPublicFormConfig = (notifyFirm.public_form_config ?? {}) as Record<string, unknown>
+      const canShowInstructLink =
+        hasProfessionalAccessForFirm(notifyFirm as Record<string, unknown>) &&
+        Boolean(notifyPublicFormConfig.show_instruct_button)
 
       // Load quote + items if they exist
       const { data: existingQuote } = await supabase
@@ -780,7 +784,7 @@ Deno.serve(async (req) => {
         try {
           const baseUrl = getBaseUrl()
           const instructionLink =
-            existingLead.status !== 'review' && notifyTotals
+            canShowInstructLink && existingLead.status !== 'review' && notifyTotals
               ? `${baseUrl}/quote/${notifyFirm.slug}/instruct?ref=${notifyRef}`
               : undefined
 
@@ -957,6 +961,10 @@ Deno.serve(async (req) => {
     }
 
     const instructionRef = referenceCode || leadId
+    const publicFormConfig = (firm.public_form_config ?? {}) as Record<string, unknown>
+    const canShowInstructLink =
+      hasProfessionalAccessForFirm(firm as Record<string, unknown>) &&
+      Boolean(publicFormConfig.show_instruct_button)
     const emailTasks: Array<{ task: string; ok: boolean; error?: string }> = []
     const fromEmail = getFromEmail()
 
@@ -987,7 +995,7 @@ Deno.serve(async (req) => {
     try {
       const baseUrl = getBaseUrl()
       const instructionLink =
-        lead.status !== 'review' && totals
+        canShowInstructLink && lead.status !== 'review' && totals
           ? `${baseUrl}/quote/${firm.slug}/instruct?ref=${instructionRef}`
           : undefined
 

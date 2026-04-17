@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -6,7 +6,7 @@ import { hasProfessionalAccess } from '@/lib/billing'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Plus, Trash2, Pencil, X } from 'lucide-react'
-import type { PricingBand, PricingExtra, DiscountCode, ServiceType } from '@/types'
+import type { PricingBand, PricingExtra, DiscountCode, ServiceType, PublicFormConfig } from '@/types'
 
 const CONDITION_FIELDS = [
   'tenure', 'is_newbuild', 'is_shared_ownership', 'has_mortgage', 'is_first_time_buyer',
@@ -29,7 +29,7 @@ const COMMON_EXTRAS = [
   { name: 'Mortgage Fee', amount: 150, vat_applicable: true },
 ]
 
-type Tab = 'bands' | 'extras' | 'codes'
+type Tab = 'bands' | 'extras' | 'standards' | 'codes'
 
 export default function PricingPage() {
   const { firmId, firmRole, isPlatformOwner } = useAuth()
@@ -41,7 +41,7 @@ export default function PricingPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('firms')
-        .select('plan_type, stripe_subscription_status')
+        .select('plan_type, stripe_subscription_status, public_form_config')
         .eq('id', firmId!)
         .maybeSingle()
       if (error) throw error
@@ -50,6 +50,11 @@ export default function PricingPage() {
     enabled: !!firmId,
   })
   const discountCodesEnabled = !!firm && hasProfessionalAccess(firm)
+  const customConditionFields = useMemo(() => {
+    const config = (firm?.public_form_config || {}) as Partial<PublicFormConfig>
+    const customKeys = (config.custom_yes_no_fields || []).map((field) => field.key)
+    return [...CONDITION_FIELDS, ...customKeys]
+  }, [firm?.public_form_config])
 
   useEffect(() => {
     if (tab === 'codes' && !discountCodesEnabled) {
@@ -100,7 +105,7 @@ export default function PricingPage() {
       </div>
 
       <div className="flex gap-1 border-b border-border mb-6">
-        {(['bands', 'extras', 'codes'] as Tab[]).map((t) => (
+        {(['bands', 'extras', 'standards', 'codes'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => {
@@ -114,13 +119,20 @@ export default function PricingPage() {
               t === 'codes' && !discountCodesEnabled ? 'cursor-not-allowed opacity-50 hover:text-muted-foreground' : ''
             }`}
           >
-            {t === 'bands' ? 'Fee Bands' : t === 'extras' ? 'Extras' : `Discount Codes${discountCodesEnabled ? '' : ' (Pro)'}`}
+            {t === 'bands'
+              ? 'Fee Bands'
+              : t === 'extras'
+                ? 'Extras'
+                : t === 'standards'
+                  ? 'Standards'
+                  : `Discount Codes${discountCodesEnabled ? '' : ' (Pro)'}`}
           </button>
         ))}
       </div>
 
       {tab === 'bands' && <BandsTab firmId={firmId!} queryClient={queryClient} canManage={canManage} />}
-      {tab === 'extras' && <ExtrasTab firmId={firmId!} queryClient={queryClient} canManage={canManage} />}
+      {tab === 'extras' && <ExtrasTab firmId={firmId!} queryClient={queryClient} canManage={canManage} conditionFields={customConditionFields} />}
+      {tab === 'standards' && <StandardsTab firmId={firmId!} queryClient={queryClient} canManage={canManage} />}
       {tab === 'codes' && <CodesTab firmId={firmId!} queryClient={queryClient} canManage={canManage} discountCodesEnabled={discountCodesEnabled} />}
     </div>
   )
@@ -263,7 +275,17 @@ function BandsTab({ firmId, queryClient, canManage }: { firmId: string; queryCli
   )
 }
 
-function ExtrasTab({ firmId, queryClient, canManage }: { firmId: string; queryClient: ReturnType<typeof useQueryClient>; canManage: boolean }) {
+function ExtrasTab({
+  firmId,
+  queryClient,
+  canManage,
+  conditionFields,
+}: {
+  firmId: string
+  queryClient: ReturnType<typeof useQueryClient>
+  canManage: boolean
+  conditionFields: string[]
+}) {
   const [showDialog, setShowDialog] = useState(false)
   const [editing, setEditing] = useState<PricingExtra | null>(null)
   const [form, setForm] = useState({
@@ -438,7 +460,7 @@ function ExtrasTab({ firmId, queryClient, canManage }: { firmId: string; queryCl
               <Field label="Condition Field">
                 <select value={form.condition_field} onChange={(e) => setForm({ ...form, condition_field: e.target.value })} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
                   <option value="">— None —</option>
-                  {CONDITION_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
+                  {conditionFields.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
               </Field>
               <Field label="Operator">
@@ -451,6 +473,14 @@ function ExtrasTab({ firmId, queryClient, canManage }: { firmId: string; queryCl
                 <input value={form.condition_value} onChange={(e) => setForm({ ...form, condition_value: e.target.value })} placeholder="e.g. yes" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
               </Field>
             </div>
+            <Field label="Custom Condition Field (optional)">
+              <input
+                value={form.condition_field}
+                onChange={(e) => setForm({ ...form, condition_field: e.target.value })}
+                placeholder="e.g. shared_ownership"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              />
+            </Field>
             <Field label="Service Type (optional)">
               <select value={form.service_type} onChange={(e) => setForm({ ...form, service_type: e.target.value })} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
                 <option value="">All services</option>
@@ -657,6 +687,171 @@ function CodesTab({
               <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} className="h-4 w-4" />
               Active
             </label>
+            <div className="flex justify-end gap-2 pt-4">
+              <button onClick={() => setShowDialog(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-medium">Cancel</button>
+              <button onClick={() => save.mutate()} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Save</button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+    </div>
+  )
+}
+
+function StandardsTab({ firmId, queryClient, canManage }: { firmId: string; queryClient: ReturnType<typeof useQueryClient>; canManage: boolean }) {
+  const [showDialog, setShowDialog] = useState(false)
+  const [editing, setEditing] = useState<PricingExtra | null>(null)
+  const [form, setForm] = useState({
+    name: '',
+    amount: 0,
+    vat_applicable: true,
+    is_active: true,
+  })
+
+  const { data: extras = [] } = useQuery({
+    queryKey: ['pricing-standards', firmId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('pricing_extras')
+        .select('*')
+        .eq('firm_id', firmId)
+        .eq('apply_mode', 'automatic')
+        .is('condition_field', null)
+        .is('condition_value', null)
+        .is('service_type', null)
+        .order('name')
+      return (data ?? []) as PricingExtra[]
+    },
+  })
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
+      const payload = {
+        name: form.name,
+        amount: form.amount,
+        vat_applicable: form.vat_applicable,
+        is_active: form.is_active,
+        apply_mode: 'automatic' as const,
+        condition_field: null,
+        condition_value: null,
+        trigger_operator: 'equals' as const,
+        service_type: null,
+      }
+      if (editing) {
+        const { error } = await supabase.from('pricing_extras').update(payload).eq('id', editing.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('pricing_extras').insert({ ...payload, firm_id: firmId })
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pricing-standards', firmId] })
+      queryClient.invalidateQueries({ queryKey: ['pricing-extras', firmId] })
+      toast.success('Saved')
+      setShowDialog(false)
+      setEditing(null)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const del = useMutation({
+    mutationFn: async (id: string) => {
+      if (!canManage) throw new Error('Read-only accounts cannot edit pricing.')
+      const { error } = await supabase.from('pricing_extras').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pricing-standards', firmId] })
+      queryClient.invalidateQueries({ queryKey: ['pricing-extras', firmId] })
+      toast.success('Deleted')
+    },
+  })
+
+  function openNew() {
+    setEditing(null)
+    setForm({ name: '', amount: 0, vat_applicable: true, is_active: true })
+    setShowDialog(true)
+  }
+
+  function openEdit(item: PricingExtra) {
+    setEditing(item)
+    setForm({
+      name: item.name,
+      amount: Number(item.amount),
+      vat_applicable: item.vat_applicable,
+      is_active: item.is_active,
+    })
+    setShowDialog(true)
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-muted-foreground mb-4">
+        Standards are fixed extras that are always included, regardless of property value or answers.
+      </p>
+      <div className="flex justify-end mb-4">
+        <button disabled={!canManage} onClick={openNew} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+          <Plus className="h-4 w-4" /> Add Standard
+        </button>
+      </div>
+
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-border bg-muted/50">
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Name</th>
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Amount</th>
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">VAT</th>
+              <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground uppercase">Active</th>
+              <th className="px-5 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {extras.length === 0 ? (
+              <tr><td colSpan={5} className="px-5 py-8 text-center text-muted-foreground text-sm">No standards configured.</td></tr>
+            ) : extras.map((e) => (
+              <tr key={e.id} className="border-b border-border last:border-0 hover:bg-muted/50">
+                <td className="px-5 py-3 text-sm font-medium">{e.name}</td>
+                <td className="px-5 py-3 text-sm">{formatCurrency(Number(e.amount))}</td>
+                <td className="px-5 py-3 text-sm">{e.vat_applicable ? 'Yes' : 'No'}</td>
+                <td className="px-5 py-3">
+                  <span className={`inline-flex h-2 w-2 rounded-full ${e.is_active ? 'bg-green-500' : 'bg-muted'}`} />
+                </td>
+                <td className="px-5 py-3 text-right">
+                  {canManage && (
+                    <>
+                      <button onClick={() => openEdit(e)} className="text-muted-foreground hover:text-foreground mr-2"><Pencil className="h-4 w-4" /></button>
+                      <button onClick={() => del.mutate(e.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showDialog && canManage && (
+        <Dialog title={editing ? 'Edit Standard' : 'Add Standard'} onClose={() => setShowDialog(false)}>
+          <div className="space-y-4">
+            <Field label="Name">
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+            </Field>
+            <Field label="Amount (£)">
+              <input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+            </Field>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.vat_applicable} onChange={(e) => setForm({ ...form, vat_applicable: e.target.checked })} className="h-4 w-4" />
+                VAT Applicable
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} className="h-4 w-4" />
+                Active
+              </label>
+            </div>
             <div className="flex justify-end gap-2 pt-4">
               <button onClick={() => setShowDialog(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-medium">Cancel</button>
               <button onClick={() => save.mutate()} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Save</button>
